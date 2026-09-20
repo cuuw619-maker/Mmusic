@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    name: Build & Test Android App
     runs-on: ubuntu-latest
 
     steps:
@@ -20,10 +21,19 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew || true
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+
+      - name: Ensure Gradle Wrapper & Permissions
+        run: |
+          if [ ! -f ./gradlew ]; then
+            echo "gradlew not found, generating wrapper..."
+            gradle wrapper || true
+          fi
+          chmod +x ./gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
@@ -34,3 +44,4 @@ jobs:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
+
