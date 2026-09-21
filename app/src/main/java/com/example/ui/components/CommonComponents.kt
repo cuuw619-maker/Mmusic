@@ -83,11 +83,8 @@ fun SongListItem(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .bouncyClickable(
-                scaleDown = 0.98f,
-                hapticType = HapticType.LIGHT,
-                onClick = onClick
-            ),
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
         color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent,
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -297,11 +294,8 @@ fun AlbumCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .bouncyClickable(
-                scaleDown = 0.96f,
-                hapticType = HapticType.LIGHT,
-                onClick = onClick
-            ),
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
@@ -370,11 +364,8 @@ fun ArtistListItem(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .bouncyClickable(
-                scaleDown = 0.97f,
-                hapticType = HapticType.LIGHT,
-                onClick = onClick
-            ),
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent
     ) {
@@ -427,11 +418,8 @@ fun FolderListItem(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .bouncyClickable(
-                scaleDown = 0.97f,
-                hapticType = HapticType.LIGHT,
-                onClick = onClick
-            ),
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent
     ) {

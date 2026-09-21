@@ -473,6 +473,14 @@ class MusicControllerManager(
         _playbackState.value = _playbackState.value.copy(repeatMode = stateRepeat)
     }
 
+    fun stop() {
+        val controller = mediaController ?: return
+        controller.stop()
+        updatePlaybackState()
+    }
+
+    fun getQueue(): List<Song> = currentQueueSongs.toList()
+
     fun addToQueue(song: Song) {
         val controller = mediaController ?: return
         currentQueueSongs.add(song)

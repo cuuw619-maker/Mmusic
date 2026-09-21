@@ -203,6 +203,34 @@ class PreferencesManager(context: Context) {
         _hapticEnabled.value = enabled
     }
 
+    fun getCustomString(key: String, defaultValue: String = ""): String =
+        prefs.getString(key, defaultValue) ?: defaultValue
+
+    fun getCustomBoolean(key: String, defaultValue: Boolean = false): Boolean =
+        prefs.getBoolean(key, defaultValue)
+
+    fun getCustomFloat(key: String, defaultValue: Float = 0f): Float =
+        prefs.getFloat(key, defaultValue)
+
+    fun getCustomInt(key: String, defaultValue: Int = 0): Int =
+        prefs.getInt(key, defaultValue)
+
+    fun setCustomString(key: String, value: String) {
+        prefs.edit().putString(key, value).apply()
+    }
+
+    fun setCustomBoolean(key: String, value: Boolean) {
+        prefs.edit().putBoolean(key, value).apply()
+    }
+
+    fun setCustomFloat(key: String, value: Float) {
+        prefs.edit().putFloat(key, value).apply()
+    }
+
+    fun setCustomInt(key: String, value: Int) {
+        prefs.edit().putInt(key, value).apply()
+    }
+
     companion object {
         private const val KEY_THEME_MODE = "key_theme_mode"
         private const val KEY_DYNAMIC_COLOR = "key_dynamic_color"

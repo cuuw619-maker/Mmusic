@@ -3,15 +3,16 @@ package com.example
 import android.app.Application
 import com.example.data.database.MusicDatabase
 import com.example.data.preferences.PreferencesManager
+import com.example.model.Playlist
+import com.example.model.Song
 import com.example.playback.EqualizerManager
 import com.example.playback.MusicControllerManager
-import com.example.plugin.HeadphoneEnhancerPlugin
 import com.example.plugin.LibraryApi
-import com.example.plugin.LyricsSyncPlugin
 import com.example.plugin.PlaybackControllerApi
-import com.example.plugin.PlaybackStatsPlugin
+import com.example.plugin.PlaylistsApi
 import com.example.plugin.PluginManager
-import com.example.plugin.SleepFadePlugin
+import com.example.plugin.QueueApi
+import com.example.plugin.SettingsApi
 import com.example.repository.MusicRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +61,7 @@ class MusicApplication : Application() {
             }
         )
 
-        // Initialize Plugin System
+        // Initialize Plugin System Infrastructure
         pluginManager = PluginManager(
             context = this,
             playerControllerProvider = {
@@ -75,6 +76,9 @@ class MusicApplication : Application() {
                             musicControllerManager.playPause()
                         }
                     }
+                    override fun stop() {
+                        musicControllerManager.stop()
+                    }
                     override fun skipToNext() = musicControllerManager.skipToNext()
                     override fun skipToPrevious() = musicControllerManager.skipToPrevious()
                     override fun seekTo(positionMs: Long) = musicControllerManager.seekTo(positionMs)
@@ -84,21 +88,59 @@ class MusicApplication : Application() {
                     override fun getPlaybackState() = musicControllerManager.playbackState.value
                 }
             },
+            queueProvider = {
+                object : QueueApi {
+                    override fun getQueue(): List<Song> = musicControllerManager.getQueue()
+                    override fun addToQueue(song: Song) = musicControllerManager.addToQueue(song)
+                    override fun removeFromQueue(index: Int) = musicControllerManager.removeFromQueue(index)
+                    override fun clearQueue() = musicControllerManager.clearQueue()
+                }
+            },
             libraryProvider = {
                 object : LibraryApi {
-                    override fun getAllSongs() = musicRepository.allSongs.value
-                    override fun getFavoriteSongs() = musicRepository.allSongs.value.filter { it.isFavorite }
+                    override fun getAllSongs(): List<Song> = musicRepository.allSongs.value
+                    override fun getFavoriteSongs(): List<Song> = musicRepository.allSongs.value.filter { it.isFavorite }
+                    override fun getSongById(id: Long): Song? = musicRepository.allSongs.value.find { it.id == id }
+                }
+            },
+            playlistsProvider = {
+                object : PlaylistsApi {
+                    override fun getAllPlaylists(): List<Playlist> = musicRepository.playlists.value
+                    override fun addSongToPlaylist(playlistId: Long, songId: Long) {
+                        applicationScope.launch {
+                            musicRepository.addSongToPlaylist(playlistId, songId)
+                        }
+                    }
+                    override fun removeSongFromPlaylist(playlistId: Long, songId: Long) {
+                        applicationScope.launch {
+                            musicRepository.removeSongFromPlaylist(playlistId, songId)
+                        }
+                    }
+                }
+            },
+            settingsProvider = {
+                object : SettingsApi {
+                    override fun getString(key: String, defaultValue: String): String =
+                        preferencesManager.getCustomString(key, defaultValue)
+                    override fun getBoolean(key: String, defaultValue: Boolean): Boolean =
+                        preferencesManager.getCustomBoolean(key, defaultValue)
+                    override fun getFloat(key: String, defaultValue: Float): Float =
+                        preferencesManager.getCustomFloat(key, defaultValue)
+                    override fun getInt(key: String, defaultValue: Int): Int =
+                        preferencesManager.getCustomInt(key, defaultValue)
+                    override fun setString(key: String, value: String) =
+                        preferencesManager.setCustomString(key, value)
+                    override fun setBoolean(key: String, value: Boolean) =
+                        preferencesManager.setCustomBoolean(key, value)
+                    override fun setFloat(key: String, value: Float) =
+                        preferencesManager.setCustomFloat(key, value)
+                    override fun setInt(key: String, value: Int) =
+                        preferencesManager.setCustomInt(key, value)
                 }
             }
         )
 
         musicControllerManager.pluginManager = pluginManager
-
-        // Register built-in plugins
-        pluginManager.registerPlugin(PlaybackStatsPlugin())
-        pluginManager.registerPlugin(SleepFadePlugin())
-        pluginManager.registerPlugin(LyricsSyncPlugin())
-        pluginManager.registerPlugin(HeadphoneEnhancerPlugin())
     }
 
     companion object {
@@ -106,3 +148,4 @@ class MusicApplication : Application() {
             private set
     }
 }
+
