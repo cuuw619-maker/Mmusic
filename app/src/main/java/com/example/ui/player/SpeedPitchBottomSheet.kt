@@ -14,12 +14,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -39,10 +37,8 @@ import kotlin.math.roundToInt
 fun SpeedPitchBottomSheet(
     currentSpeed: Float,
     currentPitchSemitones: Int,
-    preservePitch: Boolean,
     onSpeedChanged: (Float) -> Unit,
     onPitchChanged: (Int) -> Unit,
-    onPreservePitchChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -58,8 +54,8 @@ fun SpeedPitchBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
             // Header
             Row(
@@ -77,7 +73,6 @@ fun SpeedPitchBottomSheet(
                         haptic.performHaptic(HapticFeedbackType.MEDIUM_TICK)
                         onSpeedChanged(1.0f)
                         onPitchChanged(0)
-                        onPreservePitchChanged(true)
                     }
                 ) {
                     Text("Сбросить")
@@ -116,7 +111,7 @@ fun SpeedPitchBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(0.75f, 0.9f, 1.0f, 1.15f, 1.25f, 1.5f).forEach { speedPreset ->
+                    listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speedPreset ->
                         val isSelected = (currentSpeed - speedPreset).let { it in -0.02f..0.02f }
                         Box(
                             modifier = Modifier
@@ -198,41 +193,6 @@ fun SpeedPitchBottomSheet(
                             )
                         }
                     }
-                }
-            }
-
-            // Preserve Pitch Toggle
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Сохранять высоту тона",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = "При изменении скорости голос не становится неестественно писклявым (Time-stretch)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Switch(
-                        checked = preservePitch,
-                        onCheckedChange = {
-                            haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                            onPreservePitchChanged(it)
-                        }
-                    )
                 }
             }
         }

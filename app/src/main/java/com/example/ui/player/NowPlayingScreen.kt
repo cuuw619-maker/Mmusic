@@ -107,10 +107,8 @@ fun NowPlayingScreen(
     onOpenSleepTimer: () -> Unit = {},
     currentSpeed: Float = 1.0f,
     currentPitchSemitones: Int = 0,
-    preservePitch: Boolean = true,
     onSpeedChanged: (Float) -> Unit = {},
     onPitchChanged: (Int) -> Unit = {},
-    onPreservePitchChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onCollapse)
@@ -845,10 +843,8 @@ fun NowPlayingScreen(
         SpeedPitchBottomSheet(
             currentSpeed = currentSpeed,
             currentPitchSemitones = currentPitchSemitones,
-            preservePitch = preservePitch,
             onSpeedChanged = onSpeedChanged,
             onPitchChanged = onPitchChanged,
-            onPreservePitchChanged = onPreservePitchChanged,
             onDismiss = { showSpeedPitchSheet = false }
         )
     }

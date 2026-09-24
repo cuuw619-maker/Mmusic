@@ -56,6 +56,16 @@ class MusicControllerManager(
     private var positionUpdateJob: Job? = null
     private var volumeFadeJob: Job? = null
     private var isCrossfading = false
+    var playbackService: MusicPlaybackService? = null
+        private set
+
+    fun attachService(service: MusicPlaybackService) {
+        playbackService = service
+    }
+
+    fun detachService() {
+        playbackService = null
+    }
 
     init {
         initController()
@@ -143,20 +153,16 @@ class MusicControllerManager(
 
     fun applyPlaybackParameters() {
         val controller = mediaController ?: return
-        val speed = preferencesManager.playbackSpeed.value
-        val semitones = preferencesManager.pitchSemitones.value
-        val preservePitch = preferencesManager.preservePitch.value
+        val speed = preferencesManager.playbackSpeed.value.coerceIn(0.5f, 2.0f)
+        val semitones = preferencesManager.pitchSemitones.value.coerceIn(-12, 12)
 
-        // True semitone pitch calculation: 2^(semitones / 12)
-        val pitchShiftMultiplier = 2.0f.pow(semitones / 12.0f)
-        val finalPitch = if (preservePitch) {
-            pitchShiftMultiplier
-        } else {
-            speed * pitchShiftMultiplier
-        }
+        // Standard semitone pitch calculation: 2^(semitones / 12)
+        // With semitones = 0 (default), pitchMultiplier is exactly 1.0f:
+        // Speed changes tempo cleanly via time-stretch without shifting voice or musical pitch.
+        val pitchMultiplier = 2.0f.pow(semitones / 12.0f)
 
         try {
-            controller.playbackParameters = PlaybackParameters(speed, finalPitch)
+            controller.playbackParameters = PlaybackParameters(speed, pitchMultiplier)
         } catch (e: Exception) {
             Log.e("MusicControllerManager", "Failed to apply playback parameters", e)
         }
@@ -234,7 +240,18 @@ class MusicControllerManager(
                         val remaining = dur - pos
                         if (remaining in 1..crossfadeMs && !isCrossfading && controller.hasNextMediaItem()) {
                             isCrossfading = true
-                            performCrossfadeNext(crossfadeMs)
+                            val nextIndex = controller.nextMediaItemIndex
+                            if (nextIndex != C.INDEX_UNSET) {
+                                if (playbackService != null) {
+                                    playbackService?.crossfadeTo(nextIndex, crossfadeMs)
+                                } else {
+                                    performCrossfadeNext(crossfadeMs)
+                                }
+                            }
+                            scope.launch {
+                                delay(crossfadeMs + 300L)
+                                isCrossfading = false
+                            }
                         }
                     }
                 }
@@ -250,6 +267,11 @@ class MusicControllerManager(
 
     private fun performCrossfadeNext(durationMs: Long) {
         val controller = mediaController ?: return
+        val nextIdx = controller.nextMediaItemIndex
+        if (nextIdx != C.INDEX_UNSET && playbackService != null) {
+            playbackService?.crossfadeTo(nextIdx, durationMs)
+            return
+        }
         scope.launch {
             fadeVolume(from = 1.0f, to = 0.0f, durationMs = durationMs / 2)
             if (controller.hasNextMediaItem()) {
@@ -344,35 +366,41 @@ class MusicControllerManager(
         val crossfadeDurationSec = preferencesManager.crossfadeDuration.value
         val crossfadeMs = (crossfadeDurationSec * 1000).toLong()
 
-        if (crossfadeEnabled && controller.isPlaying) {
-            scope.launch {
-                fadeVolume(1.0f, 0.0f, crossfadeMs / 2)
-                if (controller.hasNextMediaItem()) {
-                    controller.seekToNextMediaItem()
-                } else if (controller.mediaItemCount > 0) {
-                    controller.seekTo(0, 0L)
-                }
-                fadeVolume(0.0f, 1.0f, crossfadeMs / 2)
-                updatePlaybackState()
-            }
-        } else {
-            if (controller.hasNextMediaItem()) {
+        val nextIndex = controller.nextMediaItemIndex
+        if (nextIndex != C.INDEX_UNSET) {
+            if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
+                playbackService?.crossfadeTo(nextIndex, crossfadeMs)
+            } else {
                 controller.seekToNextMediaItem()
-            } else if (controller.mediaItemCount > 0) {
+            }
+        } else if (controller.mediaItemCount > 0) {
+            if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
+                playbackService?.crossfadeTo(0, crossfadeMs)
+            } else {
                 controller.seekTo(0, 0L)
             }
-            updatePlaybackState()
         }
+        updatePlaybackState()
     }
 
     fun skipToPrevious() {
         val controller = mediaController ?: return
-        if (controller.currentPosition > 3000) {
+        if (controller.currentPosition > 3000L) {
             controller.seekTo(0L)
-        } else if (controller.hasPreviousMediaItem()) {
-            controller.seekToPreviousMediaItem()
         } else {
-            controller.seekTo(0L)
+            val prevIndex = controller.previousMediaItemIndex
+            if (prevIndex != C.INDEX_UNSET) {
+                val crossfadeEnabled = preferencesManager.crossfadeEnabled.value
+                val crossfadeDurationSec = preferencesManager.crossfadeDuration.value
+                val crossfadeMs = (crossfadeDurationSec * 1000).toLong()
+                if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
+                    playbackService?.crossfadeTo(prevIndex, crossfadeMs)
+                } else {
+                    controller.seekToPreviousMediaItem()
+                }
+            } else {
+                controller.seekTo(0L)
+            }
         }
         updatePlaybackState()
     }

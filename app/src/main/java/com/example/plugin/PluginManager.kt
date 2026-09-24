@@ -9,10 +9,12 @@ import com.example.model.Song
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 
 data class PluginInfo(
     val plugin: MusicPlayerPlugin,
-    val isEnabled: Boolean
+    val isEnabled: Boolean,
+    val isUserPlugin: Boolean = false
 )
 
 class PluginManager(
@@ -26,9 +28,18 @@ class PluginManager(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("music_player_plugins", Context.MODE_PRIVATE)
 
+    private val projectsDir: File = File(context.filesDir, "user_plugins").apply {
+        if (!exists()) mkdirs()
+    }
+
     private val registeredPlugins = mutableMapOf<String, MusicPlayerPlugin>()
+    private val userPluginProjects = mutableMapOf<String, UserPluginProject>()
+
     private val _pluginsState = MutableStateFlow<List<PluginInfo>>(emptyList())
     val pluginsState: StateFlow<List<PluginInfo>> = _pluginsState.asStateFlow()
+
+    private val _userProjectsState = MutableStateFlow<List<UserPluginProject>>(emptyList())
+    val userProjectsState: StateFlow<List<UserPluginProject>> = _userProjectsState.asStateFlow()
 
     private val _registeredActions = MutableStateFlow<List<PluginAction>>(emptyList())
     val registeredActions: StateFlow<List<PluginAction>> = _registeredActions.asStateFlow()
@@ -41,6 +52,10 @@ class PluginManager(
         override fun unregisterAction(actionId: String) {
             _registeredActions.value = _registeredActions.value.filter { it.id != actionId }
         }
+    }
+
+    init {
+        loadSavedUserPlugins()
     }
 
     fun registerPlugin(plugin: MusicPlayerPlugin) {
@@ -70,16 +85,37 @@ class PluginManager(
         updateState()
     }
 
+    fun unregisterPlugin(pluginId: String) {
+        val plugin = registeredPlugins.remove(pluginId)
+        if (plugin != null) {
+            try {
+                plugin.onDisable()
+            } catch (e: Exception) {
+                Log.e("PluginManager", "Error disabling plugin $pluginId during unregister", e)
+            }
+            _registeredActions.value = _registeredActions.value.filter { it.pluginId != pluginId }
+        }
+        updateState()
+    }
+
     fun setPluginEnabled(pluginId: String, enabled: Boolean) {
         val plugin = registeredPlugins[pluginId] ?: return
         prefs.edit().putBoolean("plugin_enabled_$pluginId", enabled).apply()
+
+        // Also update project model if it's a user plugin
+        val userProject = userPluginProjects[pluginId]
+        if (userProject != null) {
+            val updated = userProject.copy(isEnabled = enabled)
+            userPluginProjects[pluginId] = updated
+            saveProjectFile(updated)
+            _userProjectsState.value = userPluginProjects.values.toList()
+        }
 
         try {
             if (enabled) {
                 plugin.onEnable()
             } else {
                 plugin.onDisable()
-                // Remove actions registered by this plugin
                 _registeredActions.value = _registeredActions.value.filter { it.pluginId != pluginId }
             }
         } catch (e: Exception) {
@@ -92,12 +128,101 @@ class PluginManager(
     private fun updateState() {
         val list = registeredPlugins.values.map { plugin ->
             val enabled = prefs.getBoolean("plugin_enabled_${plugin.id}", true)
-            PluginInfo(plugin = plugin, isEnabled = enabled)
+            PluginInfo(
+                plugin = plugin,
+                isEnabled = enabled,
+                isUserPlugin = userPluginProjects.containsKey(plugin.id)
+            )
         }
         _pluginsState.value = list
     }
 
-    // Event dispatchers
+    // ==========================================
+    // USER PLUGIN PROJECTS ENGINE (SAVE / BUILD / DELETE)
+    // ==========================================
+
+    private fun loadSavedUserPlugins() {
+        try {
+            val files = projectsDir.listFiles { file -> file.extension == "json" } ?: return
+            for (file in files) {
+                try {
+                    val content = file.readText()
+                    val project = UserPluginProject.fromJson(content)
+                    if (project != null) {
+                        userPluginProjects[project.id] = project
+                        val dynamicPlugin = DynamicExecutableUserPlugin(project)
+                        registerPlugin(dynamicPlugin)
+                    }
+                } catch (e: Exception) {
+                    Log.e("PluginManager", "Failed to load user plugin file ${file.name}", e)
+                }
+            }
+            _userProjectsState.value = userPluginProjects.values.toList()
+        } catch (e: Exception) {
+            Log.e("PluginManager", "Error reading user plugins directory", e)
+        }
+    }
+
+    fun saveUserPlugin(project: UserPluginProject): ValidationResult {
+        val validation = UserPluginValidator.validate(
+            id = project.id,
+            name = project.name,
+            version = project.version,
+            sourceCode = project.sourceCode
+        )
+
+        val finalProject = project.copy(
+            isValidated = validation.isValid,
+            lastBuildMessage = validation.summary,
+            updatedAt = System.currentTimeMillis()
+        )
+
+        userPluginProjects[project.id] = finalProject
+        saveProjectFile(finalProject)
+        _userProjectsState.value = userPluginProjects.values.toList()
+
+        if (validation.isValid) {
+            // Unregister old version if already present
+            unregisterPlugin(project.id)
+            // Register executable plugin instance
+            val dynamicPlugin = DynamicExecutableUserPlugin(finalProject)
+            registerPlugin(dynamicPlugin)
+        }
+
+        return validation
+    }
+
+    fun deleteUserPlugin(pluginId: String) {
+        unregisterPlugin(pluginId)
+        userPluginProjects.remove(pluginId)
+        _userProjectsState.value = userPluginProjects.values.toList()
+
+        try {
+            val file = File(projectsDir, "$pluginId.json")
+            if (file.exists()) {
+                file.delete()
+            }
+        } catch (e: Exception) {
+            Log.e("PluginManager", "Failed to delete plugin file for $pluginId", e)
+        }
+
+        prefs.edit().remove("plugin_enabled_$pluginId").apply()
+        updateState()
+    }
+
+    private fun saveProjectFile(project: UserPluginProject) {
+        try {
+            val file = File(projectsDir, "${project.id}.json")
+            file.writeText(project.toJson())
+        } catch (e: Exception) {
+            Log.e("PluginManager", "Failed to save project file for ${project.id}", e)
+        }
+    }
+
+    // ==========================================
+    // EVENT DISPATCHERS
+    // ==========================================
+
     fun dispatchPlaybackStateChanged(state: PlaybackState) {
         for (info in _pluginsState.value) {
             if (info.isEnabled) {

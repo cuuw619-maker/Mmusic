@@ -82,6 +82,8 @@ class MusicApplication : Application() {
                     override fun skipToNext() = musicControllerManager.skipToNext()
                     override fun skipToPrevious() = musicControllerManager.skipToPrevious()
                     override fun seekTo(positionMs: Long) = musicControllerManager.seekTo(positionMs)
+                    override fun setSpeed(speed: Float) = musicControllerManager.setPlaybackSpeed(speed)
+                    override fun setPitch(pitchSemitones: Float) = musicControllerManager.setPitchSemitones(pitchSemitones.toInt())
                     override fun setVolume(volume: Float) {
                         musicControllerManager.mediaController?.volume = volume.coerceIn(0f, 1f)
                     }

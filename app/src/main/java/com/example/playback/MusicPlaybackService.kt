@@ -1,6 +1,7 @@
 package com.example.playback
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.annotation.OptIn
@@ -8,7 +9,10 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -20,7 +24,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MusicPlaybackService : MediaSessionService() {
@@ -37,7 +43,11 @@ class MusicPlaybackService : MediaSessionService() {
     lateinit var player: ExoPlayer
         private set
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    var crossfadePlayer: ExoPlayer? = null
+        private set
+
+    private var crossfadeJob: Job? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
@@ -48,7 +58,21 @@ class MusicPlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        player = ExoPlayer.Builder(this)
+        // High quality Sonic time-stretching engine (disable platform AudioTrack params to avoid stutter/repeats)
+        val renderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(false)
+                    .build()
+            }
+        }
+
+        player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
@@ -56,11 +80,30 @@ class MusicPlaybackService : MediaSessionService() {
             .setSeekForwardIncrementMs(10000)
             .build()
 
+        val crossfadeRenderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(false)
+                    .build()
+            }
+        }
+
+        crossfadePlayer = ExoPlayer.Builder(this, crossfadeRenderersFactory)
+            .setAudioAttributes(audioAttributes, false)
+            .build()
+
         // Bind equalizer directly to player session
         val app = applicationContext as? MusicApplication
         if (app != null && player.audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
             app.equalizerManager.bindAudioSession(player.audioSessionId)
         }
+
+        app?.musicControllerManager?.attachService(this)
 
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -176,6 +219,57 @@ class MusicPlaybackService : MediaSessionService() {
             .build()
     }
 
+    fun crossfadeTo(targetIndex: Int, crossfadeMs: Long) {
+        val currentItem = player.currentMediaItem ?: run {
+            player.seekToDefaultPosition(targetIndex)
+            player.play()
+            return
+        }
+
+        val currentPosition = player.currentPosition
+        val originalVolume = 1.0f
+
+        crossfadeJob?.cancel()
+
+        // Prepare secondary player with the current song's remainder to fade out
+        crossfadePlayer?.apply {
+            stop()
+            clearMediaItems()
+            setMediaItem(currentItem, currentPosition)
+            prepare()
+            volume = originalVolume
+            play()
+        }
+
+        // Switch main player to target track immediately and start at 0 volume
+        player.seekToDefaultPosition(targetIndex)
+        player.volume = 0f
+        player.play()
+
+        crossfadeJob = serviceScope.launch {
+            val steps = 25
+            val stepDelay = (crossfadeMs / steps).coerceAtLeast(12L)
+            for (i in 1..steps) {
+                val fraction = i / steps.toFloat()
+                crossfadePlayer?.volume = ((1f - fraction) * originalVolume).coerceIn(0f, 1f)
+                player.volume = (fraction * originalVolume).coerceIn(0f, 1f)
+                delay(stepDelay)
+            }
+            crossfadePlayer?.stop()
+            crossfadePlayer?.clearMediaItems()
+            player.volume = originalVolume
+            crossfadeJob = null
+        }
+    }
+
+    fun cancelCrossfade() {
+        crossfadeJob?.cancel()
+        crossfadeJob = null
+        crossfadePlayer?.stop()
+        crossfadePlayer?.clearMediaItems()
+        player.volume = 1.0f
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
@@ -188,6 +282,13 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        cancelCrossfade()
+        val app = applicationContext as? MusicApplication
+        app?.musicControllerManager?.detachService()
+
+        crossfadePlayer?.release()
+        crossfadePlayer = null
+
         mediaSession?.run {
             player.release()
             release()

@@ -52,7 +52,7 @@ class MediaStoreScanner(private val context: Context) {
             projection.add(MediaStore.Audio.Media.GENRE)
         }
 
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= 1000"
+        val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%') AND (${MediaStore.Audio.Media.DURATION} >= 1000 OR ${MediaStore.Audio.Media.DURATION} IS NULL)"
         val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
 
         try {
@@ -108,7 +108,7 @@ class MediaStoreScanner(private val context: Context) {
                         ).toString()
                     } catch (e: Exception) {
                         null
-                    }
+                    } ?: contentUri.toString()
 
                     val title = rawTitle.ifBlank {
                         dataPath.substringAfterLast("/").substringBeforeLast(".")

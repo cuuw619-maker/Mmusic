@@ -75,11 +75,11 @@ fun SettingsScreen(
     val crossfadeDuration by viewModel.crossfadeDuration.collectAsStateWithLifecycle()
     val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
     val pitchSemitones by viewModel.pitchSemitones.collectAsStateWithLifecycle()
-    val preservePitch by viewModel.preservePitch.collectAsStateWithLifecycle()
 
     val reducedMotion by viewModel.reducedMotion.collectAsStateWithLifecycle()
     val hapticEnabled by viewModel.hapticEnabled.collectAsStateWithLifecycle()
     val plugins by viewModel.plugins.collectAsStateWithLifecycle()
+    val userPlugins by viewModel.userPlugins.collectAsStateWithLifecycle()
 
     var showThemeDialog by remember { mutableStateOf(false) }
     var showSpeedPitchSheet by remember { mutableStateOf(false) }
@@ -91,10 +91,8 @@ fun SettingsScreen(
         SpeedPitchBottomSheet(
             currentSpeed = playbackSpeed,
             currentPitchSemitones = pitchSemitones,
-            preservePitch = preservePitch,
             onSpeedChanged = { viewModel.setPlaybackSpeed(it) },
             onPitchChanged = { viewModel.setPitchSemitones(it) },
-            onPreservePitchChanged = { viewModel.setPreservePitch(it) },
             onDismiss = { showSpeedPitchSheet = false }
         )
     }
@@ -102,7 +100,10 @@ fun SettingsScreen(
     if (showPluginSheet) {
         PluginManagerSheet(
             plugins = plugins,
+            userProjects = userPlugins,
             onTogglePlugin = { id, enabled -> viewModel.setPluginEnabled(id, enabled) },
+            onSaveUserPlugin = { project -> viewModel.saveUserPlugin(project) },
+            onDeleteUserPlugin = { id -> viewModel.deleteUserPlugin(id) },
             onDismiss = { showPluginSheet = false }
         )
     }
@@ -271,7 +272,7 @@ fun SettingsScreen(
                                 )
                             }
                             Slider(
-                                value = crossfadeDuration,
+                                value = crossfadeDuration.coerceIn(0.1f, 1.5f),
                                 onValueChange = {
                                     val rounded = (it * 10).roundToInt() / 10f
                                     viewModel.setCrossfadeDuration(rounded)

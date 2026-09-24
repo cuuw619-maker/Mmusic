@@ -1,16 +1,12 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,17 +20,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,17 +38,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import com.example.model.Song
-import com.example.ui.animation.FluidMotionConstants
 import com.example.ui.animation.HapticType
 import com.example.ui.animation.fluidPress
 import com.example.ui.animation.performHapticFeedback
@@ -71,12 +67,19 @@ fun MorphingPlayPauseButton(
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
+    // 0f = Paused (Play triangle ▸), 1f = Playing (Pause bars ❚❚)
+    val progress by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "play_pause_geometric_morph"
+    )
+
     Surface(
         modifier = modifier
             .size(size)
             .shadow(elevation = 6.dp, shape = CircleShape)
             .fluidPress(
-                scaleDown = 0.92f,
+                scaleDown = 0.94f,
                 hapticType = HapticType.MEDIUM,
                 onClick = onClick
             ),
@@ -84,46 +87,71 @@ fun MorphingPlayPauseButton(
         color = containerColor,
         contentColor = contentColor
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            AnimatedContent(
-                targetState = isPlaying,
-                transitionSpec = {
-                    (fadeIn(animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMediumLow)) togetherWith
-                     fadeOut(animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMediumLow)))
-                },
-                label = "play_pause_morph"
-            ) { targetIsPlaying ->
-                val rotation = remember { Animatable(if (targetIsPlaying) 0f else -90f) }
-                LaunchedEffect(targetIsPlaying) {
-                    rotation.animateTo(
-                        targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = 0.58f,
-                            stiffness = Spring.StiffnessMedium
-                        )
-                    )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.testTag(if (isPlaying) "pause_button" else "play_button")
+        ) {
+            Canvas(modifier = Modifier.size(iconSize)) {
+                val w = this.size.width
+                val h = this.size.height
+                val t = progress
+                val overlap = (1f - t) * 0.015f
+
+                // Left Polygon (Left bar in pause -> Left trapezoid of play triangle)
+                val leftPath = Path().apply {
+                    val p1x = lerp(0.24f, 0.22f, t) * w
+                    val p1y = lerp(0.18f, 0.18f, t) * h
+
+                    val p2x = (lerp(0.54f, 0.42f, t) + overlap) * w
+                    val p2y = lerp(0.34f, 0.18f, t) * h
+
+                    val p3x = (lerp(0.54f, 0.42f, t) + overlap) * w
+                    val p3y = lerp(0.66f, 0.82f, t) * h
+
+                    val p4x = lerp(0.24f, 0.22f, t) * w
+                    val p4y = lerp(0.82f, 0.82f, t) * h
+
+                    moveTo(p1x, p1y)
+                    lineTo(p2x, p2y)
+                    lineTo(p3x, p3y)
+                    lineTo(p4x, p4y)
+                    close()
                 }
 
-                Icon(
-                    imageVector = if (targetIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (targetIsPlaying) "Пауза" else "Воспроизведение",
-                    modifier = Modifier
-                        .size(iconSize)
-                        .graphicsLayer {
-                            rotationZ = rotation.value
-                        }
-                )
+                // Right Polygon (Right bar in pause -> Right tip triangle of play triangle)
+                val rightPath = Path().apply {
+                    val p1x = (lerp(0.54f, 0.58f, t) - overlap) * w
+                    val p1y = lerp(0.34f, 0.18f, t) * h
+
+                    val p2x = lerp(0.84f, 0.78f, t) * w
+                    val p2y = lerp(0.50f, 0.18f, t) * h
+
+                    val p3x = lerp(0.84f, 0.78f, t) * w
+                    val p3y = lerp(0.50f, 0.82f, t) * h
+
+                    val p4x = (lerp(0.54f, 0.58f, t) - overlap) * w
+                    val p4y = lerp(0.66f, 0.82f, t) * h
+
+                    moveTo(p1x, p1y)
+                    lineTo(p2x, p2y)
+                    lineTo(p3x, p3y)
+                    lineTo(p4x, p4y)
+                    close()
+                }
+
+                drawPath(leftPath, color = contentColor, style = Fill)
+                drawPath(rightPath, color = contentColor, style = Fill)
             }
         }
     }
 }
 
 /**
- * Physical Interactive Progress Bar:
- * - Dynamic thickness expansion on touch (4dp -> 8dp)
- * - Thumb expansion (12dp -> 18dp) with spring physics
- * - Real-time floating time bubble indicator while dragging
- * - Precise scrub & seek with haptic ticks
+ * Modern Interactive Progress Bar with Vertical Pill/Stick Thumb:
+ * - Vertical stick thumb (5dp width, 26dp height, rounded capsule)
+ * - Dynamic feedback on touch (thumb height 26dp -> 30dp, width 5dp -> 6dp)
+ * - Real-time floating time bubble indicator during scrub
+ * - Smooth, responsive drag and seek with haptic ticks
  */
 @Composable
 fun InteractiveProgressBar(
@@ -143,23 +171,24 @@ fun InteractiveProgressBar(
     val playbackFraction = (currentPositionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
     val displayFraction = if (isDragging) dragFraction else playbackFraction
 
-    // Thickness spring expands on touch
+    // Subtle track height expansion on touch
     val barHeight by animateDpAsState(
-        targetValue = if (isDragging) 8.dp else 4.dp,
-        animationSpec = spring(
-            dampingRatio = 0.58f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
+        targetValue = if (isDragging) 6.dp else 4.dp,
+        animationSpec = tween(150, easing = LinearOutSlowInEasing),
         label = "bar_thickness"
     )
 
-    val thumbSize by animateDpAsState(
-        targetValue = if (isDragging) 18.dp else 12.dp,
-        animationSpec = spring(
-            dampingRatio = 0.58f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "thumb_size"
+    // Vertical pill stick dimensions
+    val thumbWidth by animateDpAsState(
+        targetValue = if (isDragging) 6.dp else 5.dp,
+        animationSpec = tween(150, easing = LinearOutSlowInEasing),
+        label = "thumb_width"
+    )
+
+    val thumbHeight by animateDpAsState(
+        targetValue = if (isDragging) 30.dp else 26.dp,
+        animationSpec = tween(150, easing = LinearOutSlowInEasing),
+        label = "thumb_height"
     )
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -253,19 +282,25 @@ fun InteractiveProgressBar(
                 }
             }
 
-            // Draggable Thumb Circle
+            // Draggable Thumb: Vertical Pill / Stick
+            val thumbWidthPx = with(density) { thumbWidth.toPx() }
+            val thumbOffsetPx = (activeWidthPx - (thumbWidthPx / 2f)).coerceIn(
+                0f,
+                totalWidthPx - thumbWidthPx
+            )
+
             Box(
                 modifier = Modifier
                     .offset {
-                        val thumbOffset = (activeWidthPx - (with(density) { thumbSize.toPx() } / 2f)).coerceIn(
-                            0f,
-                            totalWidthPx - with(density) { thumbSize.toPx() }
-                        )
-                        IntOffset(thumbOffset.roundToInt(), 0)
+                        IntOffset(thumbOffsetPx.roundToInt(), 0)
                     }
-                    .size(thumbSize)
-                    .shadow(elevation = if (isDragging) 6.dp else 2.dp, shape = CircleShape)
-                    .clip(CircleShape)
+                    .size(width = thumbWidth, height = thumbHeight)
+                    .shadow(
+                        elevation = if (isDragging) 6.dp else 2.dp,
+                        shape = RoundedCornerShape(3.dp),
+                        spotColor = activeColor.copy(alpha = 0.5f)
+                    )
+                    .clip(RoundedCornerShape(3.dp))
                     .background(activeColor)
             )
         }

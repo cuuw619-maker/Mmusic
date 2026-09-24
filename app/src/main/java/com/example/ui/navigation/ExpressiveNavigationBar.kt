@@ -2,11 +2,15 @@ package com.example.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -40,15 +45,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.util.HapticFeedbackType
 import com.example.ui.util.rememberHapticHelper
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 val MAIN_NAV_DESTINATIONS = listOf(
     NavDestination.HOME,
@@ -58,12 +68,21 @@ val MAIN_NAV_DESTINATIONS = listOf(
     NavDestination.SETTINGS
 )
 
+private const val VISUAL_DRAG_FACTOR = 0.88f
+
 /**
- * Material 3 Expressive Floating Navigation Bar with:
- * 1. Physical Drag Support (Horizontal ONLY, Vertical strictly 0)
- * 2. Speed formula: 0.75x speed for 1-step (Главная → Поиск) up to 1.0x speed for 4-step (Главная → Настройки)
- * 3. Single continuous moving oval, NO shine / glow / ripple / flash / morph
- * 4. Geometrically fixed icons and labels always visible for all 5 tabs
+ * Modern floating "Oval inside Oval" navigation bar:
+ * - Outer Oval: Floating rounded container (glassmorphism aesthetic, subtle border, shadow).
+ * - Inner Oval: Interactive selected indicator that:
+ *     * Scales up by 15% on press/hold with a linear 150ms animation.
+ *     * Follows finger with natural light resistance (visualX = dragStartX + totalFingerDeltaX * 0.88f).
+ *     * Instant direction change on finger reversal without accumulated delay or lag.
+ *     * Keeps selectedIndex unchanged during dragging.
+ *     * Constrained strictly inside outer bounds [0, maxAllowedLeft].
+ *     * Snaps to closest tab center on release with controlled bounce.
+ *     * Strictly forbids vertical drag.
+ * - All 5 tabs always display both Icon (1:1 ratio, 22dp, never scaled) and Title text simultaneously.
+ * - Pure clean appearance without shine, glow, flash, ripple, or bouncy/elastic deformation.
  */
 @Composable
 fun ExpressiveFloatingNavigationBar(
@@ -73,8 +92,9 @@ fun ExpressiveFloatingNavigationBar(
 ) {
     val haptic = rememberHapticHelper()
     val destinations = MAIN_NAV_DESTINATIONS
-    val activeIndex = destinations.indexOf(currentDestination).let { if (it >= 0) it else 0 }
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val selectedIndex = destinations.indexOf(currentDestination).coerceAtLeast(0)
 
     Box(
         modifier = modifier
@@ -85,184 +105,243 @@ fun ExpressiveFloatingNavigationBar(
     ) {
         Surface(
             modifier = Modifier
-                .clip(RoundedCornerShape(32.dp))
+                .fillMaxWidth()
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = 10.dp,
                     shape = RoundedCornerShape(32.dp),
-                    spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                    spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                    ambientColor = Color.Black.copy(alpha = 0.12f)
                 )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                    shape = RoundedCornerShape(32.dp)
+                )
+                .clip(RoundedCornerShape(32.dp))
                 .testTag("floating_navigation_bar"),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.98f),
-            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
+            tonalElevation = 4.dp,
             shape = RoundedCornerShape(32.dp)
         ) {
             BoxWithConstraints(
                 modifier = Modifier
-                    .padding(horizontal = 6.dp, vertical = 6.dp)
                     .fillMaxWidth()
+                    .height(60.dp)
+                    .padding(horizontal = 6.dp, vertical = 5.dp)
             ) {
-                val totalWidth = maxWidth
-                val numItems = destinations.size
-                val itemWidth = totalWidth / numItems
-                val indicatorWidth = (itemWidth * 0.90f).coerceIn(48.dp, 72.dp)
-                val targetOffsetX = itemWidth * activeIndex + (itemWidth - indicatorWidth) / 2
+                val totalWidthPx = constraints.maxWidth.toFloat()
+                val tabCount = destinations.size
+                val slotWidthPx = totalWidthPx / tabCount.toFloat()
 
+                // Indicator oval dimensions
+                val indicatorWidthPx = slotWidthPx * 0.92f
+                val indicatorHeightDp = 48.dp
+
+                val minAllowedLeft = 0f
+                val maxAllowedLeft = (totalWidthPx - indicatorWidthPx).coerceAtLeast(0f)
+
+                val indicatorOffsetXPx = remember { Animatable(0f) }
+                var dragVisualXPx by remember { mutableFloatStateOf(0f) }
+                var isPressed by remember { mutableStateOf(false) }
                 var isDragging by remember { mutableStateOf(false) }
-                val indicatorOffsetAnim = remember { Animatable(targetOffsetX.value) }
 
-                // Speed calculation helper
-                fun calculateDuration(fromX: Float, toX: Float, fromIdx: Int, toIdx: Int): Int {
-                    val distanceDp = abs(toX - fromX)
-                    val stepCount = abs(toIdx - fromIdx).coerceIn(1, 4)
-                    // Speed multiplier: 0.75 for 1-step, 1.0 for 4-steps
-                    val speedFactor = 0.75f + 0.25f * ((stepCount - 1) / 3.0f)
-                    val baseSpeedDpPerSec = 560f
-                    val effectiveSpeed = baseSpeedDpPerSec * speedFactor
-                    val timeSec = distanceDp / effectiveSpeed
-                    return (timeSec * 1000f).toInt().coerceIn(150, 750)
-                }
+                // Linear 150ms press scale for ONLY the inner oval
+                val capsuleScale by animateFloatAsState(
+                    targetValue = if (isPressed || isDragging) 1.15f else 1.0f,
+                    animationSpec = tween(
+                        durationMillis = 150,
+                        easing = LinearEasing
+                    ),
+                    label = "inner_oval_press_scale"
+                )
 
-                LaunchedEffect(targetOffsetX.value) {
+                // Sync indicator position when selectedIndex changes outside of active drag
+                LaunchedEffect(selectedIndex, slotWidthPx, indicatorWidthPx, isDragging) {
                     if (!isDragging) {
-                        val currentVal = indicatorOffsetAnim.value
-                        val targetVal = targetOffsetX.value
-                        val distance = abs(targetVal - currentVal)
-                        if (distance > 0.5f) {
-                            val currentApproxIdx = (currentVal / itemWidth.value).toInt().coerceIn(0, numItems - 1)
-                            val durationMs = calculateDuration(currentVal, targetVal, currentApproxIdx, activeIndex)
-                            indicatorOffsetAnim.animateTo(
-                                targetValue = targetVal,
-                                animationSpec = tween(
-                                    durationMillis = durationMs,
-                                    easing = FastOutSlowInEasing
-                                )
-                            )
-                        }
+                        val targetCenterPx = (selectedIndex + 0.5f) * slotWidthPx
+                        val targetLeftPx = targetCenterPx - (indicatorWidthPx / 2f)
+                        val clampedTarget = targetLeftPx.coerceIn(minAllowedLeft, maxAllowedLeft)
+                        indicatorOffsetXPx.animateTo(
+                            targetValue = clampedTarget,
+                            animationSpec = tween(durationMillis = 180, easing = LinearEasing)
+                        )
                     }
                 }
 
-                // LAYER 1: Background Single Moving Oval (Pure solid color, draggable)
-                Box(
-                    modifier = Modifier
-                        .offset(x = indicatorOffsetAnim.value.dp)
-                        .width(indicatorWidth)
-                        .height(52.dp)
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                )
+                // ==========================================
+                // LAYER 1: THE INTERACTIVE INNER OVAL
+                // ==========================================
+                val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
 
-                // Drag gesture detector over the navigation bar
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    isDragging = true
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    scope.launch {
-                                        val maxOffset = (totalWidth - indicatorWidth).value.coerceAtLeast(0f)
-                                        val newOffset = (indicatorOffsetAnim.value + dragAmount.toDp().value)
-                                            .coerceIn(0f, maxOffset)
-                                        indicatorOffsetAnim.snapTo(newOffset)
+                        .offset {
+                            val currentX = if (isDragging) dragVisualXPx else indicatorOffsetXPx.value
+                            IntOffset(
+                                x = currentX.roundToInt(),
+                                y = 0
+                            )
+                        }
+                        .width(indicatorWidthDp)
+                        .height(indicatorHeightDp)
+                        .align(Alignment.CenterStart)
+                        .graphicsLayer {
+                            scaleX = capsuleScale
+                            scaleY = capsuleScale
+                        }
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .pointerInput(destinations, slotWidthPx, indicatorWidthPx, totalWidthPx, selectedIndex) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                isPressed = true
+                                var isDragStarted = false
+                                // Fixed drag origin at the moment of touch down
+                                val dragStartX = indicatorOffsetXPx.value
+                                val fingerStartX = down.position.x
+                                var currentVisualX = dragStartX
+                                var lastHapticIndex = selectedIndex
+
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            break
+                                        }
+
+                                        val totalFingerDeltaX = change.position.x - fingerStartX
+                                        val totalFingerDeltaY = change.position.y - down.position.y
+
+                                        if (!isDragStarted) {
+                                            if (abs(totalFingerDeltaX) > viewConfiguration.touchSlop &&
+                                                abs(totalFingerDeltaX) > abs(totalFingerDeltaY)
+                                            ) {
+                                                isDragStarted = true
+                                                isDragging = true
+                                                change.consume()
+                                                // Formula: visualX = dragStartX + totalFingerDeltaX * 0.88f
+                                                val visualDelta = totalFingerDeltaX * VISUAL_DRAG_FACTOR
+                                                currentVisualX = (dragStartX + visualDelta).coerceIn(minAllowedLeft, maxAllowedLeft)
+                                                dragVisualXPx = currentVisualX
+                                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            } else if (abs(totalFingerDeltaY) > viewConfiguration.touchSlop) {
+                                                // Strictly ignore/cancel gesture if vertical swipe detected
+                                                break
+                                            }
+                                        } else {
+                                            change.consume()
+                                            // Synchronous calculation based on finger origin:
+                                            // Immediately reacts to direction changes without lag or accumulated error
+                                            val visualDelta = totalFingerDeltaX * VISUAL_DRAG_FACTOR
+                                            currentVisualX = (dragStartX + visualDelta).coerceIn(minAllowedLeft, maxAllowedLeft)
+                                            dragVisualXPx = currentVisualX
+
+                                            val hoveredIndex = ((currentVisualX + indicatorWidthPx / 2f) / slotWidthPx)
+                                                .toInt()
+                                                .coerceIn(0, tabCount - 1)
+                                            if (hoveredIndex != lastHapticIndex) {
+                                                lastHapticIndex = hoveredIndex
+                                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            }
+                                        }
                                     }
-                                },
-                                onDragEnd = {
-                                    isDragging = false
-                                    val centerCurrentX = indicatorOffsetAnim.value + (indicatorWidth.value / 2f)
-                                    val targetIndex = (centerCurrentX / itemWidth.value)
-                                        .toInt()
-                                        .coerceIn(0, numItems - 1)
-                                    val targetDest = destinations[targetIndex]
-                                    if (targetDest != currentDestination) {
-                                        haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                        onNavigate(targetDest)
-                                    } else {
-                                        // Snap back to current tab center
-                                        val snapTarget = itemWidth.value * activeIndex + (itemWidth.value - indicatorWidth.value) / 2f
-                                        val duration = calculateDuration(indicatorOffsetAnim.value, snapTarget, targetIndex, activeIndex)
+                                } finally {
+                                    isPressed = false
+                                    if (isDragStarted) {
+                                        isDragging = false
+                                        // Take actual current visual X position of oval
+                                        val finalCenter = currentVisualX + indicatorWidthPx / 2f
+                                        val closestIndex = (finalCenter / slotWidthPx)
+                                            .roundToInt()
+                                            .coerceIn(0, tabCount - 1)
+
+                                        if (closestIndex != selectedIndex) {
+                                            haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            onNavigate(destinations[closestIndex])
+                                        }
+
                                         scope.launch {
-                                            indicatorOffsetAnim.animateTo(
-                                                targetValue = snapTarget,
-                                                animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing)
+                                            // Initialize Animatable directly to the final dragVisualX position
+                                            indicatorOffsetXPx.snapTo(currentVisualX)
+                                            val targetCenter = (closestIndex + 0.5f) * slotWidthPx
+                                            val targetLeft = (targetCenter - indicatorWidthPx / 2f)
+                                                .coerceIn(minAllowedLeft, maxAllowedLeft)
+                                            indicatorOffsetXPx.animateTo(
+                                                targetValue = targetLeft,
+                                                animationSpec = spring(
+                                                    dampingRatio = 0.80f,
+                                                    stiffness = 550f
+                                                )
                                             )
                                         }
                                     }
-                                },
-                                onDragCancel = {
-                                    isDragging = false
-                                    val snapTarget = itemWidth.value * activeIndex + (itemWidth.value - indicatorWidth.value) / 2f
-                                    val duration = calculateDuration(indicatorOffsetAnim.value, snapTarget, activeIndex, activeIndex)
-                                    scope.launch {
-                                        indicatorOffsetAnim.animateTo(
-                                            targetValue = snapTarget,
-                                            animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing)
-                                        )
-                                    }
                                 }
-                            )
+                            }
                         }
+                        .testTag("nav_selected_indicator")
                 )
 
-                // LAYER 2: Foreground Items (Always visible icons & titles, NO ripple flash)
+                // ==========================================
+                // LAYER 2: THE 5 TABS (ICONS & LABELS)
+                // ==========================================
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     destinations.forEachIndexed { index, destination ->
-                        val isSelected = currentDestination == destination
-
+                        val isSelected = selectedIndex == index
                         val contentColor by animateColorAsState(
                             targetValue = if (isSelected) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
-                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                            label = "nav_content_color_$index"
+                            animationSpec = tween(durationMillis = 150, easing = LinearEasing),
+                            label = "nav_content_color_${destination.route}"
                         )
 
-                        val interactionSource = remember { MutableInteractionSource() }
-
-                        Box(
-                            modifier = Modifier
-                                .width(itemWidth)
+                        val tabModifier = if (!isSelected) {
+                            Modifier
+                                .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(26.dp))
+                                .clip(RoundedCornerShape(25.dp))
                                 .clickable(
-                                    interactionSource = interactionSource,
-                                    indication = null, // No ripple, no flash, no highlight
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    enabled = !isDragging,
                                     onClick = {
-                                        if (!isSelected) {
-                                            haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                            onNavigate(destination)
-                                        }
+                                        haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                        onNavigate(destination)
                                     }
                                 )
-                                .testTag("nav_${destination.route}"),
+                                .testTag("nav_${destination.route}")
+                        } else {
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .testTag("nav_${destination.route}")
+                        }
+
+                        Box(
+                            modifier = tabModifier,
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
+                                modifier = Modifier.padding(horizontal = 2.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                // Strictly fixed 1:1 aspect ratio Icon
+                                // Icon strictly 22dp with 1:1 aspect ratio, never scaled or stretched
                                 Icon(
                                     imageVector = destination.icon,
                                     contentDescription = destination.title,
                                     tint = contentColor,
                                     modifier = Modifier.size(22.dp)
                                 )
-
                                 Spacer(modifier = Modifier.height(2.dp))
-
-                                // Always visible title text
+                                // Title text always visible for all 5 tabs
                                 Text(
                                     text = destination.title,
                                     color = contentColor,
@@ -270,7 +349,8 @@ fun ExpressiveFloatingNavigationBar(
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         fontSize = 10.sp
                                     ),
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -283,7 +363,6 @@ fun ExpressiveFloatingNavigationBar(
 
 /**
  * Expressive Navigation Rail for Foldables and Tablets.
- * Icons strictly maintain fixed dimensions and 1:1 aspect ratio.
  */
 @Composable
 fun ExpressiveNavigationRail(
@@ -296,69 +375,78 @@ fun ExpressiveNavigationRail(
 
     Surface(
         modifier = modifier
-            .fillMaxHeight()
-            .width(88.dp)
-            .testTag("tablet_navigation_rail"),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+            .width(80.dp)
+            .fillMaxHeight(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp
     ) {
         Column(
             modifier = Modifier
-                .fillMaxHeight()
-                .padding(vertical = 24.dp),
+                .fillMaxSize()
+                .padding(vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
         ) {
             destinations.forEach { destination ->
                 val isSelected = currentDestination == destination
-
                 val containerColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                    label = "rail_bg_${destination.route}"
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                    animationSpec = tween(durationMillis = 150, easing = LinearEasing),
+                    label = "rail_container_${destination.route}"
                 )
                 val contentColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    animationSpec = tween(durationMillis = 150, easing = LinearEasing),
                     label = "rail_content_${destination.route}"
                 )
 
-                val interactionSource = remember { MutableInteractionSource() }
-
-                Column(
+                Surface(
                     modifier = Modifier
+                        .size(width = 64.dp, height = 56.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(containerColor)
                         .clickable(
-                            interactionSource = interactionSource,
+                            interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
-                                if (!isSelected) {
-                                    haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                    onNavigate(destination)
-                                }
+                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                onNavigate(destination)
                             }
                         )
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                        .testTag("nav_rail_${destination.route}"),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .testTag("rail_${destination.route}"),
+                    color = containerColor,
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(
-                        imageVector = destination.icon,
-                        contentDescription = destination.title,
-                        tint = contentColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = destination.title,
-                        color = contentColor,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            fontSize = 10.sp
-                        ),
-                        maxLines = 1
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = destination.icon,
+                            contentDescription = destination.title,
+                            tint = contentColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = destination.title,
+                            color = contentColor,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 10.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }

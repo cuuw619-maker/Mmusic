@@ -109,6 +109,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     // Plugins
     val pluginManager = app.pluginManager
     val plugins = pluginManager.pluginsState
+    val userPlugins = pluginManager.userProjectsState
 
     // UI state for sheets and dialogs
     private val _isNowPlayingExpanded = MutableStateFlow(false)
@@ -342,6 +343,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun setCrossfadeDuration(seconds: Float) = preferencesManager.setCrossfadeDuration(seconds)
 
     fun setPluginEnabled(pluginId: String, enabled: Boolean) = pluginManager.setPluginEnabled(pluginId, enabled)
+    fun saveUserPlugin(project: com.example.plugin.UserPluginProject) = pluginManager.saveUserPlugin(project)
+    fun deleteUserPlugin(pluginId: String) = pluginManager.deleteUserPlugin(pluginId)
 
     fun setEqualizerEnabled(enabled: Boolean) = equalizerManager.setEnabled(enabled)
     fun setEqualizerBandLevel(band: Short, level: Short) = equalizerManager.setBandLevel(band, level)
