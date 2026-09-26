@@ -147,8 +147,16 @@ class MusicControllerManager(
             }
         })
 
-        controller.shuffleModeEnabled = false
-        controller.repeatMode = Player.REPEAT_MODE_OFF
+        val savedShuffle = preferencesManager.shuffleEnabled.value
+        controller.shuffleModeEnabled = savedShuffle
+
+        val savedRepeat = when (preferencesManager.repeatMode.value) {
+            RepeatMode.ONE -> Player.REPEAT_MODE_ONE
+            RepeatMode.ALL -> Player.REPEAT_MODE_ALL
+            RepeatMode.OFF -> Player.REPEAT_MODE_OFF
+        }
+        controller.repeatMode = savedRepeat
+        controller.volume = preferencesManager.playerVolume.value
     }
 
     fun applyPlaybackParameters() {
@@ -238,24 +246,32 @@ class MusicControllerManager(
 
                     if (crossfadeEnabled && crossfadeMs > 0 && dur > crossfadeMs * 2) {
                         val remaining = dur - pos
-                        if (remaining in 1..crossfadeMs && !isCrossfading && controller.hasNextMediaItem()) {
-                            isCrossfading = true
+                        if (remaining in 1..(crossfadeMs + 60L) && !isCrossfading) {
                             val nextIndex = controller.nextMediaItemIndex
-                            if (nextIndex != C.INDEX_UNSET) {
+                            val targetIdx = if (nextIndex != C.INDEX_UNSET) {
+                                nextIndex
+                            } else if (controller.repeatMode == Player.REPEAT_MODE_ALL && controller.mediaItemCount > 0) {
+                                0
+                            } else {
+                                C.INDEX_UNSET
+                            }
+
+                            if (targetIdx != C.INDEX_UNSET) {
+                                isCrossfading = true
                                 if (playbackService != null) {
-                                    playbackService?.crossfadeTo(nextIndex, crossfadeMs)
+                                    playbackService?.crossfadeTo(targetIdx, crossfadeMs)
                                 } else {
                                     performCrossfadeNext(crossfadeMs)
                                 }
-                            }
-                            scope.launch {
-                                delay(crossfadeMs + 300L)
-                                isCrossfading = false
+                                scope.launch {
+                                    delay(crossfadeMs + 200L)
+                                    isCrossfading = false
+                                }
                             }
                         }
                     }
                 }
-                delay(200)
+                delay(50)
             }
         }
     }
@@ -367,17 +383,20 @@ class MusicControllerManager(
         val crossfadeMs = (crossfadeDurationSec * 1000).toLong()
 
         val nextIndex = controller.nextMediaItemIndex
-        if (nextIndex != C.INDEX_UNSET) {
+        val targetIdx = if (nextIndex != C.INDEX_UNSET) {
+            nextIndex
+        } else if (controller.repeatMode == Player.REPEAT_MODE_ALL && controller.mediaItemCount > 0) {
+            0
+        } else {
+            C.INDEX_UNSET
+        }
+
+        if (targetIdx != C.INDEX_UNSET) {
             if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
-                playbackService?.crossfadeTo(nextIndex, crossfadeMs)
+                playbackService?.crossfadeTo(targetIdx, crossfadeMs)
             } else {
-                controller.seekToNextMediaItem()
-            }
-        } else if (controller.mediaItemCount > 0) {
-            if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
-                playbackService?.crossfadeTo(0, crossfadeMs)
-            } else {
-                controller.seekTo(0, 0L)
+                controller.seekTo(targetIdx, 0L)
+                controller.play()
             }
         }
         updatePlaybackState()
@@ -389,14 +408,23 @@ class MusicControllerManager(
             controller.seekTo(0L)
         } else {
             val prevIndex = controller.previousMediaItemIndex
-            if (prevIndex != C.INDEX_UNSET) {
+            val targetIdx = if (prevIndex != C.INDEX_UNSET) {
+                prevIndex
+            } else if (controller.repeatMode == Player.REPEAT_MODE_ALL && controller.mediaItemCount > 0) {
+                controller.mediaItemCount - 1
+            } else {
+                C.INDEX_UNSET
+            }
+
+            if (targetIdx != C.INDEX_UNSET) {
                 val crossfadeEnabled = preferencesManager.crossfadeEnabled.value
                 val crossfadeDurationSec = preferencesManager.crossfadeDuration.value
                 val crossfadeMs = (crossfadeDurationSec * 1000).toLong()
                 if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
-                    playbackService?.crossfadeTo(prevIndex, crossfadeMs)
+                    playbackService?.crossfadeTo(targetIdx, crossfadeMs)
                 } else {
-                    controller.seekToPreviousMediaItem()
+                    controller.seekTo(targetIdx, 0L)
+                    controller.play()
                 }
             } else {
                 controller.seekTo(0L)
@@ -420,69 +448,15 @@ class MusicControllerManager(
     }
 
     /**
-     * Real stable Fisher-Yates shuffle algorithm.
-     * When enabling: keeps current song playing at current position, shuffles remaining items.
-     * When disabling: smoothly restores original un-shuffled queue order.
+     * Seamless shuffle toggle:
+     * Toggles ExoPlayer native shuffle mode without stopping or resetting audio buffers.
      */
     fun toggleShuffle() {
         val controller = mediaController ?: return
         val enableShuffle = !controller.shuffleModeEnabled
-
-        if (currentQueueSongs.isEmpty()) {
-            controller.shuffleModeEnabled = enableShuffle
-            _playbackState.value = _playbackState.value.copy(shuffleModeEnabled = enableShuffle)
-            return
-        }
-
-        val currentSong = _playbackState.value.currentSong
-        val currentPosition = controller.currentPosition
-        val isPlaying = controller.isPlaying
-
-        if (enableShuffle) {
-            // Build stable shuffled list with current song staying in place
-            val remaining = originalQueue.filter { it.id != currentSong?.id }.toMutableList()
-            // Fisher-Yates shuffle
-            val rng = Random(System.currentTimeMillis())
-            for (i in remaining.indices.reversed()) {
-                val j = rng.nextInt(i + 1)
-                val temp = remaining[i]
-                remaining[i] = remaining[j]
-                remaining[j] = temp
-            }
-
-            val newQueue = mutableListOf<Song>()
-            if (currentSong != null) {
-                newQueue.add(currentSong)
-            }
-            newQueue.addAll(remaining)
-
-            currentQueueSongs = newQueue
-            controller.setMediaItems(
-                newQueue.map { songToMediaItem(it) },
-                0,
-                currentPosition
-            )
-            controller.shuffleModeEnabled = true
-        } else {
-            // Restore original queue order
-            val restoreIndex = if (currentSong != null) {
-                originalQueue.indexOfFirst { it.id == currentSong.id }.coerceAtLeast(0)
-            } else 0
-
-            currentQueueSongs = originalQueue.toMutableList()
-            controller.setMediaItems(
-                currentQueueSongs.map { songToMediaItem(it) },
-                restoreIndex,
-                currentPosition
-            )
-            controller.shuffleModeEnabled = false
-        }
-
-        if (isPlaying) {
-            controller.play()
-        }
+        controller.shuffleModeEnabled = enableShuffle
+        preferencesManager.setShuffleEnabled(enableShuffle)
         updatePlaybackState()
-        pluginManager?.dispatchQueueChanged(currentQueueSongs)
     }
 
     fun cycleRepeatMode() {
@@ -498,7 +472,9 @@ class MusicControllerManager(
             Player.REPEAT_MODE_ALL -> RepeatMode.ALL
             else -> RepeatMode.OFF
         }
+        preferencesManager.setRepeatMode(stateRepeat)
         _playbackState.value = _playbackState.value.copy(repeatMode = stateRepeat)
+        updatePlaybackState()
     }
 
     fun stop() {

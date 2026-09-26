@@ -68,7 +68,7 @@ val MAIN_NAV_DESTINATIONS = listOf(
     NavDestination.SETTINGS
 )
 
-private const val VISUAL_DRAG_FACTOR = 0.88f
+private const val VISUAL_DRAG_FACTOR = 0.94f
 
 /**
  * Modern floating "Oval inside Oval" navigation bar:
@@ -79,7 +79,7 @@ private const val VISUAL_DRAG_FACTOR = 0.88f
  *     * Instant direction change on finger reversal without accumulated delay or lag.
  *     * Keeps selectedIndex unchanged during dragging.
  *     * Constrained strictly inside outer bounds [0, maxAllowedLeft].
- *     * Snaps to closest tab center on release with controlled bounce.
+ *     * On release: iterates through exact tab centers to find closestIndex, then snaps with a controlled subtle bounce.
  *     * Strictly forbids vertical drag.
  * - All 5 tabs always display both Icon (1:1 ratio, 22dp, never scaled) and Title text simultaneously.
  * - Pure clean appearance without shine, glow, flash, ripple, or bouncy/elastic deformation.
@@ -145,7 +145,7 @@ fun ExpressiveFloatingNavigationBar(
                 var isPressed by remember { mutableStateOf(false) }
                 var isDragging by remember { mutableStateOf(false) }
 
-                // Linear 150ms press scale for ONLY the inner oval
+                // Linear 150ms press scale for ONLY the inner oval (scales 1.0 -> 1.15)
                 val capsuleScale by animateFloatAsState(
                     targetValue = if (isPressed || isDragging) 1.15f else 1.0f,
                     animationSpec = tween(
@@ -169,7 +169,7 @@ fun ExpressiveFloatingNavigationBar(
                 }
 
                 // ==========================================
-                // LAYER 1: THE INTERACTIVE INNER OVAL
+                // LAYER 1: THE INTERACTIVE INNER OVAL (Visual indicator)
                 // ==========================================
                 val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
 
@@ -191,94 +191,6 @@ fun ExpressiveFloatingNavigationBar(
                         }
                         .clip(RoundedCornerShape(24.dp))
                         .background(MaterialTheme.colorScheme.primaryContainer)
-                        .pointerInput(destinations, slotWidthPx, indicatorWidthPx, totalWidthPx, selectedIndex) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                isPressed = true
-                                var isDragStarted = false
-                                // Fixed drag origin at the moment of touch down
-                                val dragStartX = indicatorOffsetXPx.value
-                                val fingerStartX = down.position.x
-                                var currentVisualX = dragStartX
-                                var lastHapticIndex = selectedIndex
-
-                                try {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        if (!change.pressed) {
-                                            break
-                                        }
-
-                                        val totalFingerDeltaX = change.position.x - fingerStartX
-                                        val totalFingerDeltaY = change.position.y - down.position.y
-
-                                        if (!isDragStarted) {
-                                            if (abs(totalFingerDeltaX) > viewConfiguration.touchSlop &&
-                                                abs(totalFingerDeltaX) > abs(totalFingerDeltaY)
-                                            ) {
-                                                isDragStarted = true
-                                                isDragging = true
-                                                change.consume()
-                                                // Formula: visualX = dragStartX + totalFingerDeltaX * 0.88f
-                                                val visualDelta = totalFingerDeltaX * VISUAL_DRAG_FACTOR
-                                                currentVisualX = (dragStartX + visualDelta).coerceIn(minAllowedLeft, maxAllowedLeft)
-                                                dragVisualXPx = currentVisualX
-                                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                            } else if (abs(totalFingerDeltaY) > viewConfiguration.touchSlop) {
-                                                // Strictly ignore/cancel gesture if vertical swipe detected
-                                                break
-                                            }
-                                        } else {
-                                            change.consume()
-                                            // Synchronous calculation based on finger origin:
-                                            // Immediately reacts to direction changes without lag or accumulated error
-                                            val visualDelta = totalFingerDeltaX * VISUAL_DRAG_FACTOR
-                                            currentVisualX = (dragStartX + visualDelta).coerceIn(minAllowedLeft, maxAllowedLeft)
-                                            dragVisualXPx = currentVisualX
-
-                                            val hoveredIndex = ((currentVisualX + indicatorWidthPx / 2f) / slotWidthPx)
-                                                .toInt()
-                                                .coerceIn(0, tabCount - 1)
-                                            if (hoveredIndex != lastHapticIndex) {
-                                                lastHapticIndex = hoveredIndex
-                                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                            }
-                                        }
-                                    }
-                                } finally {
-                                    isPressed = false
-                                    if (isDragStarted) {
-                                        isDragging = false
-                                        // Take actual current visual X position of oval
-                                        val finalCenter = currentVisualX + indicatorWidthPx / 2f
-                                        val closestIndex = (finalCenter / slotWidthPx)
-                                            .roundToInt()
-                                            .coerceIn(0, tabCount - 1)
-
-                                        if (closestIndex != selectedIndex) {
-                                            haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                            onNavigate(destinations[closestIndex])
-                                        }
-
-                                        scope.launch {
-                                            // Initialize Animatable directly to the final dragVisualX position
-                                            indicatorOffsetXPx.snapTo(currentVisualX)
-                                            val targetCenter = (closestIndex + 0.5f) * slotWidthPx
-                                            val targetLeft = (targetCenter - indicatorWidthPx / 2f)
-                                                .coerceIn(minAllowedLeft, maxAllowedLeft)
-                                            indicatorOffsetXPx.animateTo(
-                                                targetValue = targetLeft,
-                                                animationSpec = spring(
-                                                    dampingRatio = 0.80f,
-                                                    stiffness = 550f
-                                                )
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
                         .testTag("nav_selected_indicator")
                 )
 
@@ -302,30 +214,11 @@ fun ExpressiveFloatingNavigationBar(
                             label = "nav_content_color_${destination.route}"
                         )
 
-                        val tabModifier = if (!isSelected) {
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(25.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    enabled = !isDragging,
-                                    onClick = {
-                                        haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
-                                        onNavigate(destination)
-                                    }
-                                )
-                                .testTag("nav_${destination.route}")
-                        } else {
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .testTag("nav_${destination.route}")
-                        }
-
                         Box(
-                            modifier = tabModifier,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .testTag("nav_${destination.route}"),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
@@ -356,6 +249,123 @@ fun ExpressiveFloatingNavigationBar(
                         }
                     }
                 }
+
+                // ==========================================
+                // LAYER 3: STATIONARY TOUCH LAYER (FULL BAR)
+                // Handles direct finger-tracking drag of selected oval & direct tab taps.
+                // Coordinates are directly in stationary container space [0, totalWidthPx].
+                // ==========================================
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(destinations, slotWidthPx, indicatorWidthPx, totalWidthPx, selectedIndex) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val dragStartFingerX = down.position.x
+                                val dragStartOvalX = indicatorOffsetXPx.value
+
+                                val ovalLeft = dragStartOvalX
+                                val ovalRight = dragStartOvalX + indicatorWidthPx
+                                val isTouchOnOval = down.position.x in (ovalLeft - 16.dp.toPx())..(ovalRight + 16.dp.toPx())
+
+                                if (isTouchOnOval) {
+                                    isPressed = true
+                                }
+
+                                var isDragStarted = false
+                                var currentVisualX = dragStartOvalX
+                                var lastHapticIndex = selectedIndex
+
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            break
+                                        }
+
+                                        val currentFingerX = change.position.x
+                                        val totalFingerDeltaX = currentFingerX - dragStartFingerX
+                                        val totalFingerDeltaY = change.position.y - down.position.y
+
+                                        if (!isDragStarted) {
+                                            if (abs(totalFingerDeltaX) > viewConfiguration.touchSlop &&
+                                                abs(totalFingerDeltaX) > abs(totalFingerDeltaY)
+                                            ) {
+                                                isDragStarted = true
+                                                isDragging = true
+                                                change.consume()
+                                                // newX = dragStartOvalX + (currentFingerX - dragStartFingerX) * 0.94f
+                                                val newX = dragStartOvalX + totalFingerDeltaX * VISUAL_DRAG_FACTOR
+                                                currentVisualX = newX.coerceIn(minAllowedLeft, maxAllowedLeft)
+                                                dragVisualXPx = currentVisualX
+                                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            } else if (abs(totalFingerDeltaY) > viewConfiguration.touchSlop) {
+                                                break
+                                            }
+                                        } else {
+                                            change.consume()
+                                            // Synchronous calculation from finger position without accumulated lag
+                                            val newX = dragStartOvalX + totalFingerDeltaX * VISUAL_DRAG_FACTOR
+                                            currentVisualX = newX.coerceIn(minAllowedLeft, maxAllowedLeft)
+                                            dragVisualXPx = currentVisualX
+
+                                            val currentCenter = currentVisualX + indicatorWidthPx / 2f
+                                            val hoveredIndex = destinations.indices.minByOrNull { i ->
+                                                val tabCenter = (i + 0.5f) * slotWidthPx
+                                                abs(tabCenter - currentCenter)
+                                            } ?: selectedIndex
+
+                                            if (hoveredIndex != lastHapticIndex) {
+                                                lastHapticIndex = hoveredIndex
+                                                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            }
+                                        }
+                                    }
+                                } finally {
+                                    isPressed = false
+                                    if (isDragStarted) {
+                                        isDragging = false
+                                        // Take actual current center of oval on release
+                                        val finalCenter = currentVisualX + indicatorWidthPx / 2f
+                                        // Compare exact distances to ALL tab centers
+                                        val closestIndex = destinations.indices.minByOrNull { i ->
+                                            val tabCenter = (i + 0.5f) * slotWidthPx
+                                            abs(tabCenter - finalCenter)
+                                        } ?: selectedIndex
+
+                                        if (closestIndex != selectedIndex) {
+                                            haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            onNavigate(destinations[closestIndex])
+                                        }
+
+                                        scope.launch {
+                                            indicatorOffsetXPx.snapTo(currentVisualX)
+                                            val targetCenter = (closestIndex + 0.5f) * slotWidthPx
+                                            val targetLeft = (targetCenter - indicatorWidthPx / 2f)
+                                                .coerceIn(minAllowedLeft, maxAllowedLeft)
+                                            // Controlled subtle bounce upon settling into target center
+                                            indicatorOffsetXPx.animateTo(
+                                                targetValue = targetLeft,
+                                                animationSpec = spring(
+                                                    dampingRatio = 0.82f,
+                                                    stiffness = 500f
+                                                )
+                                            )
+                                        }
+                                    } else {
+                                        // If released without drag: it's a direct tab tap
+                                        val tappedIndex = (down.position.x / slotWidthPx).toInt()
+                                            .coerceIn(0, destinations.size - 1)
+                                        if (tappedIndex != selectedIndex) {
+                                            haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
+                                            onNavigate(destinations[tappedIndex])
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                )
             }
         }
     }

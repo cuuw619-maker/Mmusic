@@ -119,7 +119,7 @@ fun MainApp(
     checkPermission: () -> Boolean
 ) {
     var hasPermission by remember { mutableStateOf(checkPermission()) }
-    var currentDestination by remember { mutableStateOf(NavDestination.HOME) }
+    var currentDestination by remember { mutableStateOf(viewModel.preferencesManager.selectedDestination.value) }
 
     val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
     val isNowPlayingExpanded by viewModel.isNowPlayingExpanded.collectAsStateWithLifecycle()
@@ -162,7 +162,7 @@ fun MainApp(
                 Row(modifier = Modifier.fillMaxSize()) {
                     com.example.ui.navigation.ExpressiveNavigationRail(
                         currentDestination = currentDestination,
-                        onNavigate = { currentDestination = it }
+                        onNavigate = { currentDestination = it; viewModel.preferencesManager.setSelectedDestination(it) }
                     )
 
                     Box(
@@ -182,7 +182,7 @@ fun MainApp(
                                 AppScreenContent(
                                     destination = currentDestination,
                                     viewModel = viewModel,
-                                    onNavigate = { currentDestination = it }
+                                    onNavigate = { currentDestination = it; viewModel.preferencesManager.setSelectedDestination(it) }
                                 )
                             }
                         }
@@ -240,7 +240,7 @@ fun MainApp(
                             AppScreenContent(
                                 destination = currentDestination,
                                 viewModel = viewModel,
-                                onNavigate = { currentDestination = it }
+                                onNavigate = { currentDestination = it; viewModel.preferencesManager.setSelectedDestination(it) }
                             )
                         }
                     }
@@ -282,7 +282,7 @@ fun MainApp(
                     ) {
                         com.example.ui.navigation.ExpressiveFloatingNavigationBar(
                             currentDestination = currentDestination,
-                            onNavigate = { currentDestination = it }
+                            onNavigate = { currentDestination = it; viewModel.preferencesManager.setSelectedDestination(it) }
                         )
                     }
                 }

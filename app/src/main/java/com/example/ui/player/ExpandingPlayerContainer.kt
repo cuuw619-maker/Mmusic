@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -35,8 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -45,8 +44,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.model.PlaybackState
 import com.example.model.Song
 import com.example.ui.animation.HapticType
@@ -54,6 +51,7 @@ import com.example.ui.animation.fluidPress
 import com.example.ui.animation.performHapticFeedback
 import com.example.ui.components.AppIcons
 import com.example.ui.components.MorphingPlayPauseButton
+import com.example.ui.components.TrackArtwork
 
 /**
  * Geometric Morphing Container: Mini Player <-> Fullscreen Now Playing.
@@ -99,7 +97,7 @@ fun ExpandingPlayerContainer(
 
     val expansionProgress by animateFloatAsState(
         targetValue = if (isExpanded) 1f else 0f,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
         label = "player_expansion_progress"
     )
 
@@ -109,65 +107,21 @@ fun ExpandingPlayerContainer(
         val totalWidth = maxWidth
         val totalHeight = maxHeight
 
-        // When fully expanded, display the full interactive NowPlayingScreen with all gestures
-        if (p >= 0.999f && isExpanded) {
-            NowPlayingScreen(
-                playbackState = playbackState,
-                onCollapse = { onExpandedChange(false) },
-                onPlayPause = onPlayPause,
-                onSkipNext = onSkipNext,
-                onSkipPrevious = onSkipPrevious,
-                onSeekTo = onSeekTo,
-                onRewind10 = onRewind10,
-                onForward10 = onForward10,
-                onToggleShuffle = onToggleShuffle,
-                onCycleRepeatMode = onCycleRepeatMode,
-                onToggleFavorite = onToggleFavorite,
-                onOpenQueue = onOpenQueue,
-                onOpenEqualizer = onOpenEqualizer,
-                onAddToPlaylist = onAddToPlaylist,
-                onOpenSleepTimer = onOpenSleepTimer,
-                currentSpeed = currentSpeed,
-                currentPitchSemitones = currentPitchSemitones,
-                onSpeedChanged = onSpeedChanged,
-                onPitchChanged = onPitchChanged,
-                modifier = Modifier.fillMaxSize()
-            )
-            return@BoxWithConstraints
-        }
-
-        // When collapsed, display standard clickable MiniPlayer
-        if (p <= 0.001f && !isExpanded) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = bottomNavOffset)
-            ) {
-                MiniPlayer(
-                    playbackState = playbackState,
-                    onClick = { onExpandedChange(true) },
-                    onPlayPause = onPlayPause,
-                    onSkipNext = onSkipNext
-                )
-            }
-            return@BoxWithConstraints
-        }
-
-        // ==============================================================
-        // ACTIVE GEOMETRIC MORPHING STATE (0.001f < p < 0.999f)
-        // ==============================================================
-        val containerRadius = lerp(22.dp, 0.dp, p)
-        val containerPaddingH = lerp(14.dp, 0.dp, p)
-        val containerPaddingB = lerp(bottomNavOffset + 4.dp, 0.dp, p)
-        val containerHeight = lerp(64.dp, totalHeight, p)
+        // Animated geometry values
+        val miniHeight = 64.dp
+        val containerHeight = lerp(miniHeight, totalHeight, p)
+        val containerPaddingH = lerp(12.dp, 0.dp, p)
+        val containerPaddingB = lerp(bottomNavOffset + 8.dp, 0.dp, p)
+        val containerRadius = lerp(20.dp, 0.dp, p)
         val containerElevation = lerp(8.dp, 0.dp, p)
 
-        // Artwork geometric interpolation
-        val fullArtSize = (totalWidth - 48.dp).coerceAtMost(330.dp)
-        val artSize = lerp(48.dp, fullArtSize, p)
-        val artCornerRadius = lerp(14.dp, 28.dp, p)
-        val artStartX = lerp(24.dp, (totalWidth - fullArtSize) / 2, p)
+        // Animated Artwork positioning and size
+        val miniArtSize = 48.dp
+        val fullArtSize = (totalWidth - 64.dp).coerceAtMost(360.dp)
+        val artSize = lerp(miniArtSize, fullArtSize, p)
+        val artCornerRadius = lerp(12.dp, 24.dp, p)
+
+        val artStartX = lerp(20.dp, (totalWidth - fullArtSize) / 2, p)
         val artStartY = lerp(8.dp, 84.dp, p)
 
         // Container Surface
@@ -184,6 +138,14 @@ fun ExpandingPlayerContainer(
                     .fillMaxSize()
                     .shadow(elevation = containerElevation, shape = RoundedCornerShape(containerRadius))
                     .clip(RoundedCornerShape(containerRadius))
+                    .clickable(
+                        enabled = !isExpanded,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        performHapticFeedback(view, HapticType.LIGHT)
+                        onExpandedChange(true)
+                    }
                     .testTag("expanding_player_surface"),
                 shape = RoundedCornerShape(containerRadius),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -230,28 +192,13 @@ fun ExpandingPlayerContainer(
                             modifier = Modifier
                                 .offset(x = artStartX, y = artStartY)
                                 .size(artSize)
-                                .clip(RoundedCornerShape(artCornerRadius))
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
                         ) {
-                            if (!song.albumArtUriString.isNullOrEmpty()) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(song.albumArtUriString)
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = song.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = AppIcons.Library,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(artSize * 0.5f)
-                                )
-                            }
+                            TrackArtwork(
+                                artUriString = song.albumArtUriString,
+                                contentDescription = song.title,
+                                cornerRadius = artCornerRadius,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
 
@@ -262,7 +209,7 @@ fun ExpandingPlayerContainer(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(64.dp)
-                                .padding(start = 72.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+                                .padding(start = 76.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
                                 .graphicsLayer { alpha = miniAlpha },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -282,19 +229,22 @@ fun ExpandingPlayerContainer(
                                 )
                             }
 
+                            // Rounded rectangle play/pause in Mini Player
                             MorphingPlayPauseButton(
                                 isPlaying = playbackState.isPlaying,
                                 onClick = onPlayPause,
-                                size = 44.dp,
-                                iconSize = 22.dp
+                                width = 54.dp,
+                                height = 40.dp,
+                                iconSize = 20.dp,
+                                cornerRadius = 14.dp
                             )
 
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
 
                             Box(
                                 modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .size(40.dp)
+                                    .clip(CircleShape)
                                     .fluidPress(
                                         scaleDown = 0.92f,
                                         hapticType = HapticType.LIGHT,
@@ -315,7 +265,6 @@ fun ExpandingPlayerContainer(
                         val progress = if (playbackState.durationMs > 0) {
                             (playbackState.currentPositionMs.toFloat() / playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
                         } else 0f
-
                         LinearProgressIndicator(
                             progress = { progress },
                             modifier = Modifier

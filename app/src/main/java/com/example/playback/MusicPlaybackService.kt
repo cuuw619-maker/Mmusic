@@ -14,12 +14,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.CommandButton
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.example.MainActivity
 import com.example.MusicApplication
+import com.example.R
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
@@ -32,17 +35,13 @@ import kotlinx.coroutines.launch
 class MusicPlaybackService : MediaSessionService() {
 
     companion object {
-        const val ACTION_TOGGLE_FAVORITE = "com.example.action.TOGGLE_FAVORITE"
         const val ACTION_TOGGLE_SHUFFLE = "com.example.action.TOGGLE_SHUFFLE"
         const val ACTION_TOGGLE_REPEAT = "com.example.action.TOGGLE_REPEAT"
-        const val ACTION_REWIND = "com.example.action.REWIND"
-        const val ACTION_FORWARD = "com.example.action.FORWARD"
     }
 
     private var mediaSession: MediaSession? = null
     lateinit var player: ExoPlayer
         private set
-
     var crossfadePlayer: ExoPlayer? = null
         private set
 
@@ -76,8 +75,6 @@ class MusicPlaybackService : MediaSessionService() {
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
-            .setSeekBackIncrementMs(10000)
-            .setSeekForwardIncrementMs(10000)
             .build()
 
         val crossfadeRenderersFactory = object : DefaultRenderersFactory(this) {
@@ -102,7 +99,6 @@ class MusicPlaybackService : MediaSessionService() {
         if (app != null && player.audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
             app.equalizerManager.bindAudioSession(player.audioSessionId)
         }
-
         app?.musicControllerManager?.attachService(this)
 
         player.addListener(object : Player.Listener {
@@ -123,36 +119,24 @@ class MusicPlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Custom commands for notification & lockscreen: Shuffle, Repeat, Rewind 10s, Fast Forward 10s
+        // Custom commands for notification & lockscreen: Shuffle, Repeat
+        // Using clean vector icons
         val shuffleCommand = SessionCommand(ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
         val shuffleButton = CommandButton.Builder()
             .setDisplayName("Перемешать")
-            .setIconResId(android.R.drawable.ic_menu_rotate)
+            .setIconResId(R.drawable.ic_shuffle_custom)
             .setSessionCommand(shuffleCommand)
             .build()
 
         val repeatCommand = SessionCommand(ACTION_TOGGLE_REPEAT, Bundle.EMPTY)
         val repeatButton = CommandButton.Builder()
             .setDisplayName("Повтор")
-            .setIconResId(android.R.drawable.ic_menu_revert)
+            .setIconResId(R.drawable.ic_repeat_custom)
             .setSessionCommand(repeatCommand)
             .build()
 
-        val rewindCommand = SessionCommand(ACTION_REWIND, Bundle.EMPTY)
-        val rewindButton = CommandButton.Builder()
-            .setDisplayName("Назад 10с")
-            .setIconResId(android.R.drawable.ic_media_rew)
-            .setSessionCommand(rewindCommand)
-            .build()
-
-        val forwardCommand = SessionCommand(ACTION_FORWARD, Bundle.EMPTY)
-        val forwardButton = CommandButton.Builder()
-            .setDisplayName("Вперед 10с")
-            .setIconResId(android.R.drawable.ic_media_ff)
-            .setSessionCommand(forwardCommand)
-            .build()
-
-        val customLayout = listOf(rewindButton, forwardButton, shuffleButton, repeatButton)
+        // Exact layout: Shuffle, Repeat + MediaSession handles Previous, Play/Pause, Next
+        val customLayout = listOf(shuffleButton, repeatButton)
 
         val sessionCallback = object : MediaSession.Callback {
             override fun onConnect(
@@ -162,13 +146,9 @@ class MusicPlaybackService : MediaSessionService() {
                 val availableSessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                     .add(shuffleCommand)
                     .add(repeatCommand)
-                    .add(rewindCommand)
-                    .add(forwardCommand)
                     .build()
 
                 val availablePlayerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
-                    .add(Player.COMMAND_SEEK_BACK)
-                    .add(Player.COMMAND_SEEK_FORWARD)
                     .add(Player.COMMAND_SEEK_TO_PREVIOUS)
                     .add(Player.COMMAND_SEEK_TO_NEXT)
                     .add(Player.COMMAND_PLAY_PAUSE)
@@ -199,14 +179,6 @@ class MusicPlaybackService : MediaSessionService() {
                         appInst?.musicControllerManager?.cycleRepeatMode()
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
-                    ACTION_REWIND -> {
-                        appInst?.musicControllerManager?.rewind10() ?: player.seekBack()
-                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                    }
-                    ACTION_FORWARD -> {
-                        appInst?.musicControllerManager?.forward10() ?: player.seekForward()
-                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                    }
                 }
                 return super.onCustomCommand(session, controller, customCommand, args)
             }
@@ -217,47 +189,87 @@ class MusicPlaybackService : MediaSessionService() {
             .setCallback(sessionCallback)
             .setCustomLayout(customLayout)
             .build()
+
+        val notificationProvider = object : DefaultMediaNotificationProvider(this) {
+            override fun getMediaButtons(
+                session: MediaSession,
+                playerCommands: Player.Commands,
+                customLayout: ImmutableList<CommandButton>,
+                showWhenCompact: Boolean
+            ): ImmutableList<CommandButton> {
+                val prevBtn = CommandButton.Builder()
+                    .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .setIconResId(R.drawable.ic_notification_prev)
+                    .setDisplayName("Предыдущий")
+                    .build()
+
+                val nextBtn = CommandButton.Builder()
+                    .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
+                    .setIconResId(R.drawable.ic_notification_next)
+                    .setDisplayName("Следующий")
+                    .build()
+
+                val playPauseBtn = CommandButton.Builder()
+                    .setPlayerCommand(Player.COMMAND_PLAY_PAUSE)
+                    .setIconResId(
+                        if (session.player.isPlaying) R.drawable.ic_notification_pause
+                        else R.drawable.ic_notification_play
+                    )
+                    .setDisplayName(if (session.player.isPlaying) "Пауза" else "Воспроизведение")
+                    .build()
+
+                val shuffleBtn = customLayout.firstOrNull { it.sessionCommand?.customAction == ACTION_TOGGLE_SHUFFLE }
+                    ?: shuffleButton
+
+                val repeatBtn = customLayout.firstOrNull { it.sessionCommand?.customAction == ACTION_TOGGLE_REPEAT }
+                    ?: repeatButton
+
+                return if (showWhenCompact) {
+                    ImmutableList.of(prevBtn, playPauseBtn, nextBtn)
+                } else {
+                    ImmutableList.of(prevBtn, shuffleBtn, playPauseBtn, nextBtn, repeatBtn)
+                }
+            }
+        }
+        setMediaNotificationProvider(notificationProvider)
     }
 
     fun crossfadeTo(targetIndex: Int, crossfadeMs: Long) {
-        val currentItem = player.currentMediaItem ?: run {
-            player.seekToDefaultPosition(targetIndex)
-            player.play()
-            return
-        }
-
-        val currentPosition = player.currentPosition
+        if (targetIndex !in 0 until player.mediaItemCount) return
+        val targetItem = player.getMediaItemAt(targetIndex)
         val originalVolume = 1.0f
 
         crossfadeJob?.cancel()
 
-        // Prepare secondary player with the current song's remainder to fade out
+        // Secondary player starts target track smoothly from 0 volume
         crossfadePlayer?.apply {
             stop()
             clearMediaItems()
-            setMediaItem(currentItem, currentPosition)
+            setMediaItem(targetItem, 0L)
+            volume = 0f
             prepare()
-            volume = originalVolume
             play()
         }
 
-        // Switch main player to target track immediately and start at 0 volume
-        player.seekToDefaultPosition(targetIndex)
-        player.volume = 0f
-        player.play()
-
+        // Main player continues playing Track A while fading down volume
         crossfadeJob = serviceScope.launch {
             val steps = 25
-            val stepDelay = (crossfadeMs / steps).coerceAtLeast(12L)
+            val stepDelay = (crossfadeMs / steps).coerceAtLeast(10L)
             for (i in 1..steps) {
                 val fraction = i / steps.toFloat()
-                crossfadePlayer?.volume = ((1f - fraction) * originalVolume).coerceIn(0f, 1f)
-                player.volume = (fraction * originalVolume).coerceIn(0f, 1f)
+                player.volume = ((1f - fraction) * originalVolume).coerceIn(0f, 1f)
+                crossfadePlayer?.volume = (fraction * originalVolume).coerceIn(0f, 1f)
                 delay(stepDelay)
             }
+
+            // Seamless handover: main player switches to target track at handover position
+            val handoverPos = crossfadePlayer?.currentPosition ?: 0L
+            player.seekTo(targetIndex, handoverPos)
+            player.volume = originalVolume
+            player.play()
+
             crossfadePlayer?.stop()
             crossfadePlayer?.clearMediaItems()
-            player.volume = originalVolume
             crossfadeJob = null
         }
     }
@@ -285,10 +297,8 @@ class MusicPlaybackService : MediaSessionService() {
         cancelCrossfade()
         val app = applicationContext as? MusicApplication
         app?.musicControllerManager?.detachService()
-
         crossfadePlayer?.release()
         crossfadePlayer = null
-
         mediaSession?.run {
             player.release()
             release()

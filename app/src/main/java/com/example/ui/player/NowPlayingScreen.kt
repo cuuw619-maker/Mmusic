@@ -1,22 +1,18 @@
 package com.example.ui.player
 
-import android.content.Intent
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +20,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,24 +30,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,9 +49,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -71,8 +59,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.model.PlaybackState
 import com.example.model.RepeatMode
 import com.example.model.Song
@@ -84,10 +70,21 @@ import com.example.ui.animation.performHapticFeedback
 import com.example.ui.components.AppIcons
 import com.example.ui.components.InteractiveProgressBar
 import com.example.ui.components.MorphingPlayPauseButton
+import com.example.ui.components.TrackArtwork
+import com.example.ui.dialogs.TrackDetailsDialog
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+/**
+ * Fullscreen Now Playing Screen with Material 3 Expressive aesthetics:
+ * - Rounded rectangle play/pause button.
+ * - Symmetrical pause icon & play triangle morph.
+ * - Vertical pill thumb progress bar with time bubble.
+ * - Horizontal swipe on artwork for Next/Previous track.
+ * - Vertical swipe does NOT accidentally close player (only dedicated collapse button closes it).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(
     playbackState: PlaybackState,
@@ -104,80 +101,25 @@ fun NowPlayingScreen(
     onOpenQueue: () -> Unit,
     onOpenEqualizer: () -> Unit,
     onAddToPlaylist: (Song) -> Unit,
-    onOpenSleepTimer: () -> Unit = {},
+    onOpenSleepTimer: () -> Unit,
     currentSpeed: Float = 1.0f,
     currentPitchSemitones: Int = 0,
     onSpeedChanged: (Float) -> Unit = {},
     onPitchChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    BackHandler(onBack = onCollapse)
-
-    val song = playbackState.currentSong ?: return
-    val context = LocalContext.current
+    val currentSong = playbackState.currentSong ?: return
     val view = LocalView.current
     val scope = rememberCoroutineScope()
 
-    var showMoreMenu by remember { mutableStateOf(false) }
-    var showTrackDetailsDialog by remember { mutableStateOf(false) }
     var showSpeedPitchSheet by remember { mutableStateOf(false) }
+    var showTrackDetailsDialog by remember { mutableStateOf(false) }
 
-    // Physical gesture drag offsets for Album Art with rubber-banding and rotation
     val artOffsetX = remember { Animatable(0f) }
-    val artOffsetY = remember { Animatable(0f) }
-    val screenOffsetY = remember { Animatable(0f) }
-
-    // Track previous song id to determine forward / backward transition direction
-    var previousSongId by remember { mutableLongStateOf(song.id) }
     var isForwardTransition by remember { mutableStateOf(true) }
 
-    LaunchedEffect(song.id) {
-        if (previousSongId != song.id) {
-            isForwardTransition = true
-            previousSongId = song.id
-        }
-    }
-
-    if (showTrackDetailsDialog) {
-        AlertDialog(
-            onDismissRequest = { showTrackDetailsDialog = false },
-            title = { Text("Свойства трека") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Название: ${song.title}", style = MaterialTheme.typography.bodyMedium)
-                    Text("Исполнитель: ${song.artist}", style = MaterialTheme.typography.bodyMedium)
-                    Text("Альбом: ${song.album}", style = MaterialTheme.typography.bodyMedium)
-                    Text("Формат: ${song.format}", style = MaterialTheme.typography.bodyMedium)
-                    if (song.bitrateKbps > 0) {
-                        Text("Битрейт: ${song.bitrateKbps} kbps", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (song.sizeFormatted.isNotEmpty()) {
-                        Text("Размер файла: ${song.sizeFormatted}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (song.year > 0) {
-                        Text("Год: ${song.year}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (song.folderName.isNotEmpty()) {
-                        Text("Папка: ${song.folderName}", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (song.dataPath.isNotEmpty()) {
-                        Text("Путь: ${song.dataPath}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showTrackDetailsDialog = false }) {
-                    Text("Закрыть")
-                }
-            }
-        )
-    }
-
     Surface(
-        modifier = modifier
-            .fillMaxSize()
-            .offset { IntOffset(0, screenOffsetY.value.roundToInt()) }
-            .testTag("now_playing_screen"),
+        modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface
     ) {
         Box(
@@ -186,220 +128,151 @@ fun NowPlayingScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f),
                             MaterialTheme.colorScheme.surfaceContainerLowest,
                             MaterialTheme.colorScheme.surface
                         )
                     )
                 )
-                .pointerInput(Unit) {
-                    var totalDragX = 0f
-                    var totalDragY = 0f
-                    detectDragGestures(
-                        onDragStart = {
-                            totalDragX = 0f
-                            totalDragY = 0f
-                        },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            totalDragX += dragAmount.x
-                            totalDragY += dragAmount.y
-
-                            scope.launch {
-                                artOffsetX.snapTo(calculateRubberBandOffset(totalDragX, 0.18f))
-                                artOffsetY.snapTo(calculateRubberBandOffset(totalDragY, 0.18f))
-                                if (totalDragY > 0) {
-                                    screenOffsetY.snapTo(calculateRubberBandOffset(totalDragY, 0.5f))
-                                }
-                            }
-                        },
-                        onDragEnd = {
-                            val threshold = 140f
-                            if (totalDragY > threshold && abs(totalDragY) > abs(totalDragX)) {
-                                // Swipe Down -> Dismiss Now Playing
-                                performHapticFeedback(view, HapticType.MEDIUM)
-                                onCollapse()
-                            } else if (totalDragY < -threshold && abs(totalDragY) > abs(totalDragX)) {
-                                // Swipe Up -> Open Queue
-                                performHapticFeedback(view, HapticType.MEDIUM)
-                                onOpenQueue()
-                            } else if (totalDragX < -threshold) {
-                                // Swipe Left -> Next Track
-                                isForwardTransition = true
-                                performHapticFeedback(view, HapticType.LIGHT)
-                                onSkipNext()
-                            } else if (totalDragX > threshold) {
-                                // Swipe Right -> Previous Track
-                                isForwardTransition = false
-                                performHapticFeedback(view, HapticType.LIGHT)
-                                onSkipPrevious()
-                            }
-
-                            scope.launch {
-                                artOffsetX.animateTo(0f, FluidMotionConstants.dragSpring())
-                            }
-                            scope.launch {
-                                artOffsetY.animateTo(0f, FluidMotionConstants.dragSpring())
-                            }
-                            scope.launch {
-                                screenOffsetY.animateTo(0f, FluidMotionConstants.dragSpring())
-                            }
-                        },
-                        onDragCancel = {
-                            scope.launch { artOffsetX.animateTo(0f) }
-                            scope.launch { artOffsetY.animateTo(0f) }
-                            scope.launch { screenOffsetY.animateTo(0f) }
-                        }
-                    )
-                }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.92f,
-                                hapticType = HapticType.LIGHT,
-                                onClick = onCollapse
-                            )
-                            .testTag("now_playing_collapse_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "Свернуть",
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "СЕЙЧАС ИГРАЕТ",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                letterSpacing = 2.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (song.album.isNotBlank()) {
+                // Top App Bar with Close / Collapse Button
+                TopAppBar(
+                    title = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = song.album,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Box {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .fluidPress(
-                                    scaleDown = 0.92f,
-                                    hapticType = HapticType.LIGHT,
-                                    onClick = { showMoreMenu = true }
+                                text = "СЕЙЧАС ИГРАЕТ",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp
                                 ),
-                            contentAlignment = Alignment.Center
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (currentSong.album.isNotBlank()) {
+                                Text(
+                                    text = currentSong.album,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                performHapticFeedback(view, HapticType.LIGHT)
+                                onCollapse()
+                            },
+                            modifier = Modifier.testTag("now_playing_collapse")
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.MoreVert,
-                                contentDescription = "Меню",
+                                imageVector = AppIcons.ExpandMore,
+                                contentDescription = "Свернуть",
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
-
-                        DropdownMenu(
-                            expanded = showMoreMenu,
-                            onDismissRequest = { showMoreMenu = false }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                performHapticFeedback(view, HapticType.LIGHT)
+                                onOpenSleepTimer()
+                            }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Эквалайзер") },
-                                leadingIcon = { Icon(AppIcons.Equalizer, contentDescription = null) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    onOpenEqualizer()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Скорость и тональность") },
-                                leadingIcon = { Icon(AppIcons.Speed, contentDescription = null) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    showSpeedPitchSheet = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Таймер сна") },
-                                leadingIcon = { Icon(AppIcons.SleepTimer, contentDescription = null) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    onOpenSleepTimer()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Свойства трека") },
-                                leadingIcon = { Icon(Icons.Rounded.Info, contentDescription = null) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    showTrackDetailsDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Поделиться") },
-                                leadingIcon = { Icon(AppIcons.Share, contentDescription = null) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, "Слушаю ${song.title} — ${song.artist}")
-                                    }
-                                    context.startActivity(Intent.createChooser(sendIntent, "Поделиться треком"))
-                                }
+                            Icon(
+                                imageVector = AppIcons.SleepTimer,
+                                contentDescription = "Таймер сна",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                }
+                        IconButton(
+                            onClick = {
+                                performHapticFeedback(view, HapticType.LIGHT)
+                                showSpeedPitchSheet = true
+                            }
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.Speed,
+                                contentDescription = "Скорость и тональность",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                performHapticFeedback(view, HapticType.LIGHT)
+                                showTrackDetailsDialog = true
+                            }
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.MoreVert,
+                                contentDescription = "О треке",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Physical Album Art Container with directional Motion & Tilt
-                val rotationAngle = (artOffsetX.value * 0.08f).coerceIn(-8f, 8f)
+                // Artwork with Horizontal Swipe gestures for Track Switching
+                // (Vertical gestures are NOT consumed to prevent accidental closing)
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.85f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
                         .aspectRatio(1f)
-                        .offset { IntOffset(artOffsetX.value.roundToInt(), artOffsetY.value.roundToInt()) }
-                        .graphicsLayer {
-                            rotationZ = rotationAngle
+                        .offset { IntOffset(artOffsetX.value.roundToInt(), 0) }
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        )
+                        .clip(RoundedCornerShape(24.dp))
+                        .pointerInput(currentSong.id) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    val threshold = 120f
+                                    if (artOffsetX.value < -threshold) {
+                                        // Swipe Left -> Next Track
+                                        isForwardTransition = true
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onSkipNext()
+                                    } else if (artOffsetX.value > threshold) {
+                                        // Swipe Right -> Previous Track
+                                        isForwardTransition = false
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onSkipPrevious()
+                                    }
+                                    scope.launch {
+                                        artOffsetX.animateTo(0f, FluidMotionConstants.dragSpring())
+                                    }
+                                },
+                                onDragCancel = {
+                                    scope.launch { artOffsetX.animateTo(0f) }
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    scope.launch {
+                                        artOffsetX.snapTo(calculateRubberBandOffset(artOffsetX.value + dragAmount, 0.25f))
+                                    }
+                                }
+                            )
                         }
-                        .shadow(16.dp, RoundedCornerShape(28.dp))
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .pointerInput(song.id) {
+                        .pointerInput(currentSong.id) {
                             detectTapGestures(
                                 onDoubleTap = {
                                     performHapticFeedback(view, HapticType.TOGGLE)
-                                    onToggleFavorite(song.id)
+                                    onToggleFavorite(currentSong.id)
                                 },
                                 onLongPress = {
                                     performHapticFeedback(view, HapticType.HEAVY)
@@ -410,7 +283,7 @@ fun NowPlayingScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     AnimatedContent(
-                        targetState = song,
+                        targetState = currentSong,
                         transitionSpec = {
                             if (isForwardTransition) {
                                 (slideInHorizontally(FluidMotionConstants.artworkSpring()) { width -> (width * 0.3f).toInt() } + fadeIn(FluidMotionConstants.pressSpring())) togetherWith
@@ -420,267 +293,96 @@ fun NowPlayingScreen(
                                 (slideOutHorizontally(FluidMotionConstants.artworkSpring()) { width -> (width * 0.3f).toInt() } + fadeOut(FluidMotionConstants.pressSpring()))
                             }
                         },
-                        label = "album_art_motion"
-                    ) { currentSong ->
-                        if (!currentSong.albumArtUriString.isNullOrEmpty()) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(currentSong.albumArtUriString)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = currentSong.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Icon(
-                                imageVector = AppIcons.Library,
-                                contentDescription = null,
-                                modifier = Modifier.size(108.dp),
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Title, Artist, Quality Badge, and Favorite with Directional Slide
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        AnimatedContent(
-                            targetState = song,
-                            transitionSpec = {
-                                (fadeIn(FluidMotionConstants.pressSpring()) + slideInHorizontally(FluidMotionConstants.pressSpring()) { if (isForwardTransition) 30 else -30 }) togetherWith
-                                (fadeOut(FluidMotionConstants.pressSpring()) + slideOutHorizontally(FluidMotionConstants.pressSpring()) { if (isForwardTransition) -30 else 30 })
-                            },
-                            label = "track_title_motion"
-                        ) { currentSong ->
-                            Text(
-                                text = currentSong.title,
-                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = song.artist,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Text(
-                                    text = song.qualityBadge,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Favorite Button with Haptic
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.88f,
-                                hapticType = HapticType.TOGGLE,
-                                onClick = { onToggleFavorite(song.id) }
-                            )
-                            .testTag("now_playing_favorite_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (song.isFavorite) AppIcons.FavoriteFilled else AppIcons.FavoriteOutlined,
-                            contentDescription = if (song.isFavorite) "В избранном" else "В избранное",
-                            tint = if (song.isFavorite) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(28.dp)
+                        label = "now_playing_art_anim"
+                    ) { song ->
+                        TrackArtwork(
+                            artUriString = song.albumArtUriString,
+                            contentDescription = song.title,
+                            cornerRadius = 24.dp,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-                // Interactive Physics Progress Bar
-                InteractiveProgressBar(
-                    currentPositionMs = playbackState.currentPositionMs,
-                    durationMs = playbackState.durationMs,
-                    onSeekTo = onSeekTo,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-
-                // Quick utility chips (Speed, Pitch, EQ, Sleep)
+                // Title, Artist and Favorite
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                        .padding(horizontal = 32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.fluidPress(
-                            scaleDown = 0.94f,
-                            hapticType = HapticType.LIGHT,
-                            onClick = { showSpeedPitchSheet = true }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = currentSong.title,
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("now_playing_title")
                         )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = AppIcons.Speed,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "%.2fx".format(currentSpeed),
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = currentSong.artist,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("now_playing_artist")
+                        )
                     }
 
-                    if (currentPitchSemitones != 0) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.fluidPress(
-                                scaleDown = 0.94f,
-                                hapticType = HapticType.LIGHT,
-                                onClick = { showSpeedPitchSheet = true }
-                            )
-                        ) {
-                            Text(
-                                text = "%+d st".format(currentPitchSemitones),
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                    IconButton(
+                        onClick = {
+                            performHapticFeedback(view, HapticType.TOGGLE)
+                            onToggleFavorite(currentSong.id)
                         }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.fluidPress(
-                            scaleDown = 0.94f,
-                            hapticType = HapticType.LIGHT,
-                            onClick = onOpenEqualizer
-                        )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = AppIcons.Equalizer,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "EQ",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.fluidPress(
-                            scaleDown = 0.94f,
-                            hapticType = HapticType.LIGHT,
-                            onClick = onOpenSleepTimer
+                        Icon(
+                            imageVector = if (currentSong.isFavorite) AppIcons.Favorite else AppIcons.FavoriteBorder,
+                            contentDescription = if (currentSong.isFavorite) "Удалить из избранного" else "В избранное",
+                            tint = if (currentSong.isFavorite) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = AppIcons.SleepTimer,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Сон",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                // Main Playback Controls
+                // Seek Bar with Vertical Pill Thumb
+                Box(modifier = Modifier.padding(horizontal = 24.dp)) {
+                    InteractiveProgressBar(
+                        currentPositionMs = playbackState.currentPositionMs,
+                        durationMs = playbackState.durationMs,
+                        onSeekTo = onSeekTo
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Primary Controls: Shuffle, Previous, Play/Pause, Next, Repeat
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Shuffle
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.90f,
-                                hapticType = HapticType.TOGGLE,
-                                onClick = onToggleShuffle
-                            )
-                            .testTag("now_playing_shuffle_button"),
-                        contentAlignment = Alignment.Center
+                    IconButton(
+                        onClick = {
+                            performHapticFeedback(view, HapticType.LIGHT)
+                            onToggleShuffle()
+                        },
+                        modifier = Modifier.testTag("now_playing_shuffle")
                     ) {
                         Icon(
                             imageVector = AppIcons.Shuffle,
-                            contentDescription = "Перемешать",
-                            tint = if (playbackState.shuffleModeEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                    }
-
-                    // 10s Rewind
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.90f,
-                                hapticType = HapticType.LIGHT,
-                                onClick = onRewind10
-                            )
-                            .testTag("now_playing_rewind_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Rewind,
-                            contentDescription = "Назад на 10 сек",
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(28.dp)
+                            contentDescription = "Случайный порядок",
+                            tint = if (playbackState.shuffleModeEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            }
                         )
                     }
 
@@ -692,28 +394,27 @@ fun NowPlayingScreen(
                             .fluidPress(
                                 scaleDown = 0.90f,
                                 hapticType = HapticType.LIGHT,
-                                onClick = {
-                                    isForwardTransition = false
-                                    onSkipPrevious()
-                                }
-                            )
-                            .testTag("now_playing_prev_button"),
+                                onClick = onSkipPrevious
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = AppIcons.Previous,
-                            contentDescription = "Предыдущий трек",
-                            modifier = Modifier.size(34.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
+                            contentDescription = "Предыдущий",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(34.dp)
                         )
                     }
 
-                    // Morphing Play/Pause Button
+                    // Main Morphing Play / Pause Button - Rounded Rectangle!
                     MorphingPlayPauseButton(
                         isPlaying = playbackState.isPlaying,
                         onClick = onPlayPause,
-                        size = 72.dp,
-                        iconSize = 36.dp
+                        width = 86.dp,
+                        height = 62.dp,
+                        iconSize = 32.dp,
+                        cornerRadius = 24.dp,
+                        modifier = Modifier.testTag("now_playing_play_pause")
                     )
 
                     // Next Track
@@ -724,90 +425,86 @@ fun NowPlayingScreen(
                             .fluidPress(
                                 scaleDown = 0.90f,
                                 hapticType = HapticType.LIGHT,
-                                onClick = {
-                                    isForwardTransition = true
-                                    onSkipNext()
-                                }
-                            )
-                            .testTag("now_playing_next_button"),
+                                onClick = onSkipNext
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = AppIcons.Next,
-                            contentDescription = "Следующий трек",
-                            modifier = Modifier.size(34.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    // 10s Forward
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.90f,
-                                hapticType = HapticType.LIGHT,
-                                onClick = onForward10
-                            )
-                            .testTag("now_playing_forward_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Forward,
-                            contentDescription = "Вперед на 10 сек",
+                            contentDescription = "Следующий",
                             tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(34.dp)
                         )
                     }
 
-                    // Repeat Mode
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.90f,
-                                hapticType = HapticType.TOGGLE,
-                                onClick = onCycleRepeatMode
-                            )
-                            .testTag("now_playing_repeat_button"),
-                        contentAlignment = Alignment.Center
+                    // Repeat
+                    IconButton(
+                        onClick = {
+                            performHapticFeedback(view, HapticType.LIGHT)
+                            onCycleRepeatMode()
+                        },
+                        modifier = Modifier.testTag("now_playing_repeat")
                     ) {
-                        val (icon, tint) = when (playbackState.repeatMode) {
-                            RepeatMode.OFF -> AppIcons.Repeat to MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            RepeatMode.ALL -> AppIcons.Repeat to MaterialTheme.colorScheme.primary
-                            RepeatMode.ONE -> AppIcons.RepeatOne to MaterialTheme.colorScheme.primary
+                        val repeatIcon = when (playbackState.repeatMode) {
+                            RepeatMode.ONE -> AppIcons.RepeatOne
+                            else -> AppIcons.Repeat
+                        }
+                        val repeatTint = when (playbackState.repeatMode) {
+                            RepeatMode.OFF -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            else -> MaterialTheme.colorScheme.primary
                         }
                         Icon(
-                            imageVector = icon,
-                            contentDescription = playbackState.repeatMode.label,
-                            tint = tint
+                            imageVector = repeatIcon,
+                            contentDescription = "Режим повтора",
+                            tint = repeatTint
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Bottom actions: Add to playlist, Queue button
+                // Bottom Quick Action Bar (Queue, Equalizer, Add to Playlist)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 28.dp),
-                    horizontalArrangement = Arrangement.SpaceAround,
+                        .padding(horizontal = 36.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.90f,
-                                hapticType = HapticType.LIGHT,
-                                onClick = { onAddToPlaylist(song) }
-                            )
-                            .testTag("now_playing_add_playlist_button"),
-                        contentAlignment = Alignment.Center
+                    IconButton(
+                        onClick = {
+                            performHapticFeedback(view, HapticType.LIGHT)
+                            onOpenQueue()
+                        },
+                        modifier = Modifier.testTag("now_playing_queue")
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Queue,
+                            contentDescription = "Очередь воспроизведения",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            performHapticFeedback(view, HapticType.LIGHT)
+                            onOpenEqualizer()
+                        },
+                        modifier = Modifier.testTag("now_playing_equalizer")
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Equalizer,
+                            contentDescription = "Эквалайзер",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            performHapticFeedback(view, HapticType.LIGHT)
+                            onAddToPlaylist(currentSong)
+                        },
+                        modifier = Modifier.testTag("now_playing_add_to_playlist")
                     ) {
                         Icon(
                             imageVector = AppIcons.PlaylistAdd,
@@ -815,26 +512,9 @@ fun NowPlayingScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .fluidPress(
-                                scaleDown = 0.90f,
-                                hapticType = HapticType.LIGHT,
-                                onClick = onOpenQueue
-                            )
-                            .testTag("now_playing_queue_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Queue,
-                            contentDescription = "Очередь воспроизведения",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -846,6 +526,13 @@ fun NowPlayingScreen(
             onSpeedChanged = onSpeedChanged,
             onPitchChanged = onPitchChanged,
             onDismiss = { showSpeedPitchSheet = false }
+        )
+    }
+
+    if (showTrackDetailsDialog) {
+        TrackDetailsDialog(
+            song = currentSong,
+            onDismiss = { showTrackDetailsDialog = false }
         )
     }
 }

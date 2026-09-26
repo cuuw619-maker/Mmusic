@@ -55,6 +55,8 @@ object AppIcons {
 
     val FavoriteFilled: ImageVector = Icons.Rounded.Favorite
     val FavoriteOutlined: ImageVector = Icons.Rounded.FavoriteBorder
+    val Favorite: ImageVector = Icons.Rounded.Favorite
+    val FavoriteBorder: ImageVector = Icons.Rounded.FavoriteBorder
 
     val Queue: ImageVector = Icons.AutoMirrored.Rounded.QueueMusic
     val Equalizer: ImageVector = Icons.Rounded.Equalizer
@@ -66,7 +68,9 @@ object AppIcons {
     val Download: ImageVector = Icons.Rounded.Download
     val Share: ImageVector = Icons.Rounded.Share
     val More: ImageVector = Icons.Rounded.MoreVert
+    val MoreVert: ImageVector = Icons.Rounded.MoreVert
     val Back: ImageVector = Icons.AutoMirrored.Rounded.ArrowBack
     val Close: ImageVector = Icons.Rounded.Close
+    val ExpandMore: ImageVector = Icons.Rounded.Close
     val Volume: ImageVector = Icons.AutoMirrored.Rounded.VolumeUp
 }

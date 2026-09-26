@@ -46,7 +46,7 @@ class MusicRepository(
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
-    private val _sortOrder = MutableStateFlow(SortOrder.TITLE_ASC)
+    private val _sortOrder = MutableStateFlow(preferencesManager.sortOrder.value)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
 
     val favoriteSongIds: Flow<List<Long>> = musicDao.getAllFavoriteSongIds()
@@ -180,6 +180,7 @@ class MusicRepository(
     }
 
     fun setSortOrder(order: SortOrder) {
+        preferencesManager.setSortOrder(order)
         _sortOrder.value = order
     }
 

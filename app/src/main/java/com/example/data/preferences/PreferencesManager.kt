@@ -2,17 +2,21 @@ package com.example.data.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.model.RepeatMode
+import com.example.model.SortOrder
+import com.example.ui.navigation.NavDestination
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class PreferencesManager(context: Context) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("music_player_prefs", Context.MODE_PRIVATE)
 
     enum class ThemeMode {
         SYSTEM, LIGHT, DARK
     }
+
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("imux_player_prefs", Context.MODE_PRIVATE)
 
     private val _themeMode = MutableStateFlow(loadThemeMode())
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -44,7 +48,7 @@ class PreferencesManager(context: Context) {
     private val _preservePitch = MutableStateFlow(prefs.getBoolean(KEY_PRESERVE_PITCH, true))
     val preservePitch: StateFlow<Boolean> = _preservePitch.asStateFlow()
 
-    private val _crossfadeEnabled = MutableStateFlow(prefs.getBoolean(KEY_CROSSFADE_ENABLED, false))
+    private val _crossfadeEnabled = MutableStateFlow(prefs.getBoolean(KEY_CROSSFADE_ENABLED, true))
     val crossfadeEnabled: StateFlow<Boolean> = _crossfadeEnabled.asStateFlow()
 
     private val _crossfadeDuration = MutableStateFlow(prefs.getFloat(KEY_CROSSFADE_DURATION, 0.3f))
@@ -74,12 +78,58 @@ class PreferencesManager(context: Context) {
     private val _hapticEnabled = MutableStateFlow(prefs.getBoolean(KEY_HAPTIC_ENABLED, true))
     val hapticEnabled: StateFlow<Boolean> = _hapticEnabled.asStateFlow()
 
+    // Persistent Shuffle & Repeat
+    private val _shuffleEnabled = MutableStateFlow(prefs.getBoolean(KEY_SHUFFLE_ENABLED, false))
+    val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(loadRepeatMode())
+    val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
+
+    // Persistent Volume
+    private val _playerVolume = MutableStateFlow(prefs.getFloat(KEY_PLAYER_VOLUME, 1.0f))
+    val playerVolume: StateFlow<Float> = _playerVolume.asStateFlow()
+
+    // Persistent SortOrder
+    private val _sortOrder = MutableStateFlow(loadSortOrder())
+    val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
+
+    // Persistent Selected Navigation Destination
+    private val _selectedDestination = MutableStateFlow(loadSelectedDestination())
+    val selectedDestination: StateFlow<NavDestination> = _selectedDestination.asStateFlow()
+
     private fun loadThemeMode(): ThemeMode {
         val name = prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name
         return try {
             ThemeMode.valueOf(name)
         } catch (e: Exception) {
             ThemeMode.SYSTEM
+        }
+    }
+
+    private fun loadRepeatMode(): RepeatMode {
+        val name = prefs.getString(KEY_REPEAT_MODE, RepeatMode.OFF.name) ?: RepeatMode.OFF.name
+        return try {
+            RepeatMode.valueOf(name)
+        } catch (e: Exception) {
+            RepeatMode.OFF
+        }
+    }
+
+    private fun loadSortOrder(): SortOrder {
+        val name = prefs.getString(KEY_SORT_ORDER, SortOrder.TITLE_ASC.name) ?: SortOrder.TITLE_ASC.name
+        return try {
+            SortOrder.valueOf(name)
+        } catch (e: Exception) {
+            SortOrder.TITLE_ASC
+        }
+    }
+
+    private fun loadSelectedDestination(): NavDestination {
+        val name = prefs.getString(KEY_SELECTED_DESTINATION, NavDestination.HOME.name) ?: NavDestination.HOME.name
+        return try {
+            NavDestination.valueOf(name)
+        } catch (e: Exception) {
+            NavDestination.HOME
         }
     }
 
@@ -203,6 +253,33 @@ class PreferencesManager(context: Context) {
         _hapticEnabled.value = enabled
     }
 
+    fun setShuffleEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SHUFFLE_ENABLED, enabled).apply()
+        _shuffleEnabled.value = enabled
+    }
+
+    fun setRepeatMode(mode: RepeatMode) {
+        prefs.edit().putString(KEY_REPEAT_MODE, mode.name).apply()
+        _repeatMode.value = mode
+    }
+
+    fun setPlayerVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        prefs.edit().putFloat(KEY_PLAYER_VOLUME, clamped).apply()
+        _playerVolume.value = clamped
+    }
+
+    fun setSortOrder(order: SortOrder) {
+        prefs.edit().putString(KEY_SORT_ORDER, order.name).apply()
+        _sortOrder.value = order
+    }
+
+    fun setSelectedDestination(dest: NavDestination) {
+        prefs.edit().putString(KEY_SELECTED_DESTINATION, dest.name).apply()
+        _selectedDestination.value = dest
+    }
+
+    // Custom Generic Settings for Plugins
     fun getCustomString(key: String, defaultValue: String = ""): String =
         prefs.getString(key, defaultValue) ?: defaultValue
 
@@ -255,5 +332,10 @@ class PreferencesManager(context: Context) {
         private const val KEY_ANIMATION_SCALE = "key_animation_scale"
         private const val KEY_REDUCED_MOTION = "key_reduced_motion"
         private const val KEY_HAPTIC_ENABLED = "key_haptic_enabled"
+        private const val KEY_SHUFFLE_ENABLED = "key_shuffle_enabled"
+        private const val KEY_REPEAT_MODE = "key_repeat_mode"
+        private const val KEY_PLAYER_VOLUME = "key_player_volume"
+        private const val KEY_SORT_ORDER = "key_sort_order"
+        private const val KEY_SELECTED_DESTINATION = "key_selected_destination"
     }
 }

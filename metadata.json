@@ -1,5 +1,5 @@
 {
-  "name": "Music Player",
+  "name": "imux player",
   "description": "Native Android music player with Material 3 Expressive, Media3 ExoPlayer, MediaSession, Room database, playlists, queue, equalizer, and background playback.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

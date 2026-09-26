@@ -1,6 +1,5 @@
 package com.example.ui.components
 
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -21,9 +20,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,7 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -57,16 +53,30 @@ import com.example.ui.animation.fluidPress
 import com.example.ui.animation.performHapticFeedback
 import kotlin.math.roundToInt
 
+/**
+ * Geometric Morphing Play/Pause Button:
+ * - Rounded Rectangle shape (NOT circle)
+ * - Exact symmetrical geometry:
+ *     * In Pause (progress = 1): two identical, perfectly centered vertical bars of equal width and height.
+ *     * In Play (progress = 0): symmetrical play triangle centered precisely in the button.
+ *     * Morph continuously animates between the two shapes without fade or clipping.
+ */
 @Composable
 fun MorphingPlayPauseButton(
     isPlaying: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    size: Dp = 64.dp,
-    iconSize: Dp = 32.dp,
+    width: Dp = 80.dp,
+    height: Dp = 56.dp,
+    size: Dp? = null,
+    iconSize: Dp = 28.dp,
+    cornerRadius: Dp = 20.dp,
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
+    val finalWidth = size ?: width
+    val finalHeight = size ?: height
+
     // 0f = Paused (Play triangle ▸), 1f = Playing (Pause bars ❚❚)
     val progress by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0f,
@@ -76,14 +86,14 @@ fun MorphingPlayPauseButton(
 
     Surface(
         modifier = modifier
-            .size(size)
-            .shadow(elevation = 6.dp, shape = CircleShape)
+            .size(width = finalWidth, height = finalHeight)
+            .shadow(elevation = 6.dp, shape = RoundedCornerShape(cornerRadius))
             .fluidPress(
                 scaleDown = 0.94f,
                 hapticType = HapticType.MEDIUM,
                 onClick = onClick
             ),
-        shape = CircleShape,
+        shape = RoundedCornerShape(cornerRadius),
         color = containerColor,
         contentColor = contentColor
     ) {
@@ -97,19 +107,28 @@ fun MorphingPlayPauseButton(
                 val t = progress
                 val overlap = (1f - t) * 0.015f
 
-                // Left Polygon (Left bar in pause -> Left trapezoid of play triangle)
+                // In Pause (t = 1):
+                // Left bar: x from 0.20w to 0.40w (width 0.20w), y from 0.15h to 0.85h (height 0.70h)
+                // Right bar: x from 0.60w to 0.80w (width 0.20w), y from 0.15h to 0.85h (height 0.70h)
+                // Gap between bars: 0.20w. Perfectly symmetrical!
+
+                // In Play (t = 0):
+                // Triangle from x = 0.25w to x = 0.85w, top/bottom at 0.15h and 0.85h, converging to tip at (0.85w, 0.50h).
+                // Left half: x from 0.25w to 0.55w
+                // Right half: x from 0.55w to 0.85w
+
                 val leftPath = Path().apply {
-                    val p1x = lerp(0.24f, 0.22f, t) * w
-                    val p1y = lerp(0.18f, 0.18f, t) * h
+                    val p1x = lerp(0.25f, 0.20f, t) * w
+                    val p1y = lerp(0.15f, 0.15f, t) * h
 
-                    val p2x = (lerp(0.54f, 0.42f, t) + overlap) * w
-                    val p2y = lerp(0.34f, 0.18f, t) * h
+                    val p2x = (lerp(0.55f, 0.40f, t) + overlap) * w
+                    val p2y = lerp(0.325f, 0.15f, t) * h
 
-                    val p3x = (lerp(0.54f, 0.42f, t) + overlap) * w
-                    val p3y = lerp(0.66f, 0.82f, t) * h
+                    val p3x = (lerp(0.55f, 0.40f, t) + overlap) * w
+                    val p3y = lerp(0.675f, 0.85f, t) * h
 
-                    val p4x = lerp(0.24f, 0.22f, t) * w
-                    val p4y = lerp(0.82f, 0.82f, t) * h
+                    val p4x = lerp(0.25f, 0.20f, t) * w
+                    val p4y = lerp(0.85f, 0.85f, t) * h
 
                     moveTo(p1x, p1y)
                     lineTo(p2x, p2y)
@@ -118,19 +137,18 @@ fun MorphingPlayPauseButton(
                     close()
                 }
 
-                // Right Polygon (Right bar in pause -> Right tip triangle of play triangle)
                 val rightPath = Path().apply {
-                    val p1x = (lerp(0.54f, 0.58f, t) - overlap) * w
-                    val p1y = lerp(0.34f, 0.18f, t) * h
+                    val p1x = (lerp(0.55f, 0.60f, t) - overlap) * w
+                    val p1y = lerp(0.325f, 0.15f, t) * h
 
-                    val p2x = lerp(0.84f, 0.78f, t) * w
-                    val p2y = lerp(0.50f, 0.18f, t) * h
+                    val p2x = lerp(0.85f, 0.80f, t) * w
+                    val p2y = lerp(0.50f, 0.15f, t) * h
 
-                    val p3x = lerp(0.84f, 0.78f, t) * w
-                    val p3y = lerp(0.50f, 0.82f, t) * h
+                    val p3x = lerp(0.85f, 0.80f, t) * w
+                    val p3y = lerp(0.50f, 0.85f, t) * h
 
-                    val p4x = (lerp(0.54f, 0.58f, t) - overlap) * w
-                    val p4y = lerp(0.66f, 0.82f, t) * h
+                    val p4x = (lerp(0.55f, 0.60f, t) - overlap) * w
+                    val p4y = lerp(0.675f, 0.85f, t) * h
 
                     moveTo(p1x, p1y)
                     lineTo(p2x, p2y)
@@ -147,9 +165,10 @@ fun MorphingPlayPauseButton(
 }
 
 /**
- * Modern Interactive Progress Bar with Vertical Pill/Stick Thumb:
- * - Vertical stick thumb (5dp width, 26dp height, rounded capsule)
- * - Dynamic feedback on touch (thumb height 26dp -> 30dp, width 5dp -> 6dp)
+ * Modern Interactive Progress Bar with Vertical Pill/Thumb:
+ * - Vertical pill thumb (6dp width, 28dp height, rounded capsule)
+ * - Dynamic feedback on touch (thumb height 28dp -> 34dp, width 6dp -> 8dp)
+ * - Large 48dp hit area for effortless touch
  * - Real-time floating time bubble indicator during scrub
  * - Smooth, responsive drag and seek with haptic ticks
  */
@@ -178,15 +197,14 @@ fun InteractiveProgressBar(
         label = "bar_thickness"
     )
 
-    // Vertical pill stick dimensions
+    // Vertical pill thumb dimensions
     val thumbWidth by animateDpAsState(
-        targetValue = if (isDragging) 6.dp else 5.dp,
+        targetValue = if (isDragging) 8.dp else 6.dp,
         animationSpec = tween(150, easing = LinearOutSlowInEasing),
         label = "thumb_width"
     )
-
     val thumbHeight by animateDpAsState(
-        targetValue = if (isDragging) 30.dp else 26.dp,
+        targetValue = if (isDragging) 34.dp else 28.dp,
         animationSpec = tween(150, easing = LinearOutSlowInEasing),
         label = "thumb_height"
     )
@@ -195,7 +213,7 @@ fun InteractiveProgressBar(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(48.dp)
                 .pointerInput(safeDuration) {
                     detectTapGestures(
                         onPress = { offset ->
@@ -265,13 +283,13 @@ fun InteractiveProgressBar(
             // Floating Time Bubble Indicator on Drag
             if (isDragging) {
                 val currentDragMs = (dragFraction * safeDuration).toLong()
-                val bubbleOffset = (activeWidthPx - 28f).coerceIn(0f, totalWidthPx - 56f)
+                val bubbleOffset = (activeWidthPx - 32f).coerceIn(0f, totalWidthPx - 64f)
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(bubbleOffset.roundToInt(), -55) }
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.inverseSurface)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -296,11 +314,11 @@ fun InteractiveProgressBar(
                     }
                     .size(width = thumbWidth, height = thumbHeight)
                     .shadow(
-                        elevation = if (isDragging) 6.dp else 2.dp,
-                        shape = RoundedCornerShape(3.dp),
+                        elevation = if (isDragging) 6.dp else 3.dp,
+                        shape = RoundedCornerShape(thumbWidth / 2),
                         spotColor = activeColor.copy(alpha = 0.5f)
                     )
-                    .clip(RoundedCornerShape(3.dp))
+                    .clip(RoundedCornerShape(thumbWidth / 2))
                     .background(activeColor)
             )
         }

@@ -408,7 +408,7 @@ private fun RecentSongCard(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(song.albumArtUriString)
-                            .crossfade(true)
+                            .crossfade(true).placeholder(com.example.R.drawable.ic_album_placeholder).error(com.example.R.drawable.ic_album_placeholder)
                             .build(),
                         contentDescription = song.title,
                         contentScale = ContentScale.Crop,
