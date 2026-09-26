@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -68,7 +69,6 @@ import com.example.ui.home.HomeScreen
 import com.example.ui.library.LibraryScreen
 import com.example.ui.navigation.NavDestination
 import com.example.ui.permissions.PermissionScreen
-import com.example.ui.player.ExpandingPlayerContainer
 import com.example.ui.player.MiniPlayer
 import com.example.ui.player.NowPlayingScreen
 import com.example.ui.player.QueueSheet
@@ -143,6 +143,10 @@ fun MainApp(
         }
     }
 
+    BackHandler(enabled = isNowPlayingExpanded) {
+        viewModel.setNowPlayingExpanded(false)
+    }
+
     if (!hasPermission) {
         PermissionScreen(
             onPermissionGranted = {
@@ -178,6 +182,7 @@ fun MainApp(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(innerPadding)
+                                    .padding(bottom = if (playbackState.currentSong != null) 80.dp else 0.dp)
                             ) {
                                 AppScreenContent(
                                     destination = currentDestination,
@@ -187,46 +192,26 @@ fun MainApp(
                             }
                         }
 
-                        if (playbackState.currentSong != null) {
-                            ExpandingPlayerContainer(
-                                isExpanded = isNowPlayingExpanded,
-                                onExpandedChange = { viewModel.setNowPlayingExpanded(it) },
-                                playbackState = playbackState,
-                                onPlayPause = { viewModel.playPause() },
-                                onSkipNext = { viewModel.skipToNext() },
-                                onSkipPrevious = { viewModel.skipToPrevious() },
-                                onSeekTo = { viewModel.seekTo(it) },
-                                onRewind10 = { viewModel.rewind10() },
-                                onForward10 = { viewModel.forward10() },
-                                onToggleShuffle = { viewModel.toggleShuffle() },
-                                onCycleRepeatMode = { viewModel.cycleRepeatMode() },
-                                onToggleFavorite = { viewModel.toggleFavorite(it) },
-                                onOpenQueue = { viewModel.setQueueSheetVisible(true) },
-                                onOpenEqualizer = { viewModel.setEqualizerSheetVisible(true) },
-                                onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-                                onOpenSleepTimer = { viewModel.setSleepTimerSheetVisible(true) },
-                                currentSpeed = playbackSpeed,
-                                currentPitchSemitones = pitchSemitones,
-                                onSpeedChanged = { viewModel.setPlaybackSpeed(it) },
-                                onPitchChanged = { viewModel.setPitchSemitones(it) },
-                                bottomNavOffset = 8.dp
-                            )
+                        if (playbackState.currentSong != null && !isNowPlayingExpanded) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.BottomCenter)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                MiniPlayer(
+                                    playbackState = playbackState,
+                                    onClick = { viewModel.setNowPlayingExpanded(true) },
+                                    onPlayPause = { viewModel.playPause() },
+                                    onSkipNext = { viewModel.skipToNext() },
+                                    modifier = Modifier.testTag("mini_player")
+                                )
+                            }
                         }
                     }
                 }
             } else {
-                // Phone layout: Expressive Floating Capsule Navigation Bar + Morphing Player
-                val navBarTranslationY by animateDpAsState(
-                    targetValue = if (isNowPlayingExpanded) 110.dp else 0.dp,
-                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-                    label = "phone_nav_bar_slide"
-                )
-                val navBarAlpha by animateFloatAsState(
-                    targetValue = if (isNowPlayingExpanded) 0f else 1f,
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                    label = "phone_nav_bar_alpha"
-                )
-
+                // Phone layout: Expressive Floating Navigation Bar + Mini Player
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
@@ -236,6 +221,7 @@ fun MainApp(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(innerPadding)
+                                .padding(bottom = if (playbackState.currentSong != null) 144.dp else 76.dp)
                         ) {
                             AppScreenContent(
                                 destination = currentDestination,
@@ -245,41 +231,22 @@ fun MainApp(
                         }
                     }
 
-                    // Morphing Mini Player <-> Full Now Playing Screen
-                    if (playbackState.currentSong != null) {
-                        ExpandingPlayerContainer(
-                            isExpanded = isNowPlayingExpanded,
-                            onExpandedChange = { viewModel.setNowPlayingExpanded(it) },
-                            playbackState = playbackState,
-                            onPlayPause = { viewModel.playPause() },
-                            onSkipNext = { viewModel.skipToNext() },
-                            onSkipPrevious = { viewModel.skipToPrevious() },
-                            onSeekTo = { viewModel.seekTo(it) },
-                            onRewind10 = { viewModel.rewind10() },
-                            onForward10 = { viewModel.forward10() },
-                            onToggleShuffle = { viewModel.toggleShuffle() },
-                            onCycleRepeatMode = { viewModel.cycleRepeatMode() },
-                            onToggleFavorite = { viewModel.toggleFavorite(it) },
-                            onOpenQueue = { viewModel.setQueueSheetVisible(true) },
-                            onOpenEqualizer = { viewModel.setEqualizerSheetVisible(true) },
-                            onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-                            onOpenSleepTimer = { viewModel.setSleepTimerSheetVisible(true) },
-                            currentSpeed = playbackSpeed,
-                            currentPitchSemitones = pitchSemitones,
-                            onSpeedChanged = { viewModel.setPlaybackSpeed(it) },
-                            onPitchChanged = { viewModel.setPitchSemitones(it) },
-                            bottomNavOffset = 76.dp
-                        )
-                    }
-
-                    // Floating Navigation Bar at the bottom
-                    Box(
+                    // Bottom Navigation + Mini Player stacked cleanly
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomCenter)
-                            .offset(y = navBarTranslationY)
-                            .graphicsLayer { alpha = navBarAlpha }
                     ) {
+                        if (playbackState.currentSong != null && !isNowPlayingExpanded) {
+                            MiniPlayer(
+                                playbackState = playbackState,
+                                onClick = { viewModel.setNowPlayingExpanded(true) },
+                                onPlayPause = { viewModel.playPause() },
+                                onSkipNext = { viewModel.skipToNext() },
+                                modifier = Modifier.testTag("mini_player")
+                            )
+                        }
+
                         com.example.ui.navigation.ExpressiveFloatingNavigationBar(
                             currentDestination = currentDestination,
                             onNavigate = { currentDestination = it; viewModel.preferencesManager.setSelectedDestination(it) }
@@ -287,6 +254,42 @@ fun MainApp(
                     }
                 }
             }
+        }
+
+        // Full Now Playing Screen (Slides up smoothly over everything on phone & tablet)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isNowPlayingExpanded && playbackState.currentSong != null,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(180)),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+            ) + fadeOut(animationSpec = tween(180))
+        ) {
+            NowPlayingScreen(
+                playbackState = playbackState,
+                onCollapse = { viewModel.setNowPlayingExpanded(false) },
+                onPlayPause = { viewModel.playPause() },
+                onSkipNext = { viewModel.skipToNext() },
+                onSkipPrevious = { viewModel.skipToPrevious() },
+                onSeekTo = { viewModel.seekTo(it) },
+                onRewind10 = { viewModel.rewind10() },
+                onForward10 = { viewModel.forward10() },
+                onToggleShuffle = { viewModel.toggleShuffle() },
+                onCycleRepeatMode = { viewModel.cycleRepeatMode() },
+                onToggleFavorite = { viewModel.toggleFavorite(it) },
+                onOpenQueue = { viewModel.setQueueSheetVisible(true) },
+                onOpenEqualizer = { viewModel.setEqualizerSheetVisible(true) },
+                onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
+                onOpenSleepTimer = { viewModel.setSleepTimerSheetVisible(true) },
+                currentSpeed = playbackSpeed,
+                currentPitchSemitones = pitchSemitones,
+                onSpeedChanged = { viewModel.setPlaybackSpeed(it) },
+                onPitchChanged = { viewModel.setPitchSemitones(it) },
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 
@@ -370,37 +373,10 @@ private fun AppScreenContent(
     AnimatedContent(
         targetState = destination,
         transitionSpec = {
-            val initialIndex = SCREEN_ORDER.indexOf(initialState).coerceAtLeast(0)
-            val targetIndex = SCREEN_ORDER.indexOf(targetState).coerceAtLeast(0)
-            val direction = if (targetIndex >= initialIndex) 1 else -1
-            val duration = 280
-            val easing = FastOutSlowInEasing
-
-            val enterTransition = slideInHorizontally(
-                animationSpec = tween(duration, easing = easing)
-            ) { width -> direction * width } +
-            fadeIn(
-                animationSpec = tween(duration, easing = easing)
-            ) +
-            scaleIn(
-                initialScale = 0.96f,
-                animationSpec = tween(duration, easing = easing)
-            )
-
-            val exitTransition = slideOutHorizontally(
-                animationSpec = tween(duration, easing = easing)
-            ) { width -> -direction * width } +
-            fadeOut(
-                animationSpec = tween(duration, easing = easing)
-            ) +
-            scaleOut(
-                targetScale = 0.96f,
-                animationSpec = tween(duration, easing = easing)
-            )
-
-            enterTransition togetherWith exitTransition
+            fadeIn(animationSpec = tween(160, easing = LinearOutSlowInEasing)) togetherWith
+            fadeOut(animationSpec = tween(120, easing = FastOutLinearInEasing))
         },
-        label = "DirectionalScreenTransition"
+        label = "TabScreenTransition"
     ) { targetDest ->
         when (targetDest) {
             NavDestination.HOME -> HomeScreen(

@@ -56,6 +56,7 @@ class MusicControllerManager(
     private var positionUpdateJob: Job? = null
     private var volumeFadeJob: Job? = null
     private var isCrossfading = false
+    private var pendingRestore: Triple<Song, List<Song>, Long>? = null
     var playbackService: MusicPlaybackService? = null
         private set
 
@@ -66,6 +67,9 @@ class MusicControllerManager(
     fun detachService() {
         playbackService = null
     }
+
+    private fun getService(): MusicPlaybackService? =
+        playbackService ?: MusicPlaybackService.instance
 
     init {
         initController()
@@ -83,6 +87,11 @@ class MusicControllerManager(
                     mediaController = controllerFuture?.get()
                     setupPlayerListener()
                     applyPlaybackParameters()
+                    val pending = pendingRestore
+                    if (pending != null) {
+                        pendingRestore = null
+                        restoreLastPlayedSong(pending.first, pending.second, pending.third)
+                    }
                     updatePlaybackState()
                 } catch (e: Exception) {
                     Log.e("MusicControllerManager", "Failed to connect to MediaController", e)
@@ -199,7 +208,7 @@ class MusicControllerManager(
         val currentSong = currentMediaItem?.let { item ->
             val id = item.mediaId.toLongOrNull() ?: -1L
             currentQueueSongs.find { it.id == id } ?: songFromMediaItem(item)
-        }
+        } ?: _playbackState.value.currentSong
 
         val repeat = when (controller.repeatMode) {
             Player.REPEAT_MODE_ONE -> RepeatMode.ONE
@@ -313,6 +322,31 @@ class MusicControllerManager(
     }
 
     // Playback control APIs
+    fun restoreLastPlayedSong(song: Song, queue: List<Song> = listOf(song), positionMs: Long = 0L) {
+        val controller = mediaController ?: return
+        if (controller.currentMediaItem != null || _playbackState.value.currentSong != null) return
+        originalQueue = queue.toMutableList()
+        currentQueueSongs.clear()
+        currentQueueSongs.addAll(queue)
+
+        val startIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+        val mediaItems = queue.map { songToMediaItem(it) }
+
+        controller.setMediaItems(mediaItems, startIndex, positionMs.coerceAtLeast(0L))
+        controller.prepare()
+
+        val newState = _playbackState.value.copy(
+            currentSong = song,
+            isPlaying = false,
+            currentPositionMs = positionMs.coerceAtLeast(0L),
+            durationMs = song.durationMs,
+            queue = currentQueueSongs.toList(),
+            currentQueueIndex = startIndex
+        )
+        _playbackState.value = newState
+        pluginManager?.dispatchQueueChanged(currentQueueSongs)
+    }
+
     fun playSong(song: Song, queue: List<Song> = listOf(song)) {
         val controller = mediaController ?: return
         originalQueue = queue.toMutableList()

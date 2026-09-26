@@ -164,6 +164,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+        // Restore last played song into playback state on launch so Mini Player is immediately visible
+        viewModelScope.launch {
+            allSongs.collect { songs ->
+                if (songs.isNotEmpty() && controllerManager.playbackState.value.currentSong == null) {
+                    val lastId = preferencesManager.getLastSongId()
+                    val lastPos = preferencesManager.getLastPositionMs()
+                    val targetSong = songs.find { it.id == lastId } ?: songs.firstOrNull()
+                    if (targetSong != null) {
+                        controllerManager.restoreLastPlayedSong(targetSong, songs, lastPos)
+                    }
+                }
+            }
+        }
     }
 
     fun onSearchQueryChanged(query: String) {

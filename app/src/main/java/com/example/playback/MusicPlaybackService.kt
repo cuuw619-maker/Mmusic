@@ -37,6 +37,8 @@ class MusicPlaybackService : MediaSessionService() {
     companion object {
         const val ACTION_TOGGLE_SHUFFLE = "com.example.action.TOGGLE_SHUFFLE"
         const val ACTION_TOGGLE_REPEAT = "com.example.action.TOGGLE_REPEAT"
+        var instance: MusicPlaybackService? = null
+            private set
     }
 
     private var mediaSession: MediaSession? = null
@@ -51,6 +53,7 @@ class MusicPlaybackService : MediaSessionService() {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        instance = this
 
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -241,35 +244,70 @@ class MusicPlaybackService : MediaSessionService() {
 
         crossfadeJob?.cancel()
 
-        // Secondary player starts target track smoothly from 0 volume
-        crossfadePlayer?.apply {
-            stop()
-            clearMediaItems()
-            setMediaItem(targetItem, 0L)
-            volume = 0f
-            prepare()
-            play()
+        val secPlayer = crossfadePlayer ?: run {
+            player.seekToDefaultPosition(targetIndex)
+            player.play()
+            return
         }
 
-        // Main player continues playing Track A while fading down volume
+        // Secondary player starts target track smoothly from 0 volume
+        secPlayer.stop()
+        secPlayer.clearMediaItems()
+        secPlayer.setMediaItem(targetItem, 0L)
+        secPlayer.volume = 0f
+        secPlayer.prepare()
+        secPlayer.play()
+
         crossfadeJob = serviceScope.launch {
+            // Wait briefly for secondary player to finish buffering so audio is ready
+            var waitCount = 0
+            while (secPlayer.playbackState == Player.STATE_BUFFERING && waitCount < 15) {
+                delay(10L)
+                waitCount++
+            }
+
+            // Crossfade: player fades down 1 -> 0, secPlayer fades up 0 -> 1
             val steps = 25
             val stepDelay = (crossfadeMs / steps).coerceAtLeast(10L)
             for (i in 1..steps) {
                 val fraction = i / steps.toFloat()
                 player.volume = ((1f - fraction) * originalVolume).coerceIn(0f, 1f)
-                crossfadePlayer?.volume = (fraction * originalVolume).coerceIn(0f, 1f)
+                secPlayer.volume = (fraction * originalVolume).coerceIn(0f, 1f)
                 delay(stepDelay)
             }
 
-            // Seamless handover: main player switches to target track at handover position
-            val handoverPos = crossfadePlayer?.currentPosition ?: 0L
+            // At this point, player.volume is 0f and secPlayer is playing smoothly at 1.0f
+            player.volume = 0f
+            secPlayer.volume = originalVolume
+
+            // Pause player briefly so it does not trigger automatic track change or buffer conflict
+            player.pause()
+
+            // Prepare player on the target track at secPlayer's current position
+            val handoverPos = secPlayer.currentPosition.coerceAtLeast(0L)
             player.seekTo(targetIndex, handoverPos)
-            player.volume = originalVolume
+            player.volume = 0f
             player.play()
 
-            crossfadePlayer?.stop()
-            crossfadePlayer?.clearMediaItems()
+            // Wait until primary player is ready and actively playing to guarantee zero audio gap
+            var readyWait = 0
+            while ((!player.isPlaying || player.playbackState != Player.STATE_READY) && readyWait < 30) {
+                delay(10L)
+                readyWait++
+            }
+
+            // Smooth 30ms micro-crossfade handover: ramp player up, ramp secPlayer down
+            val microSteps = 3
+            for (step in 1..microSteps) {
+                val factor = step / microSteps.toFloat()
+                player.volume = (factor * originalVolume).coerceIn(0f, 1f)
+                secPlayer.volume = ((1f - factor) * originalVolume).coerceIn(0f, 1f)
+                delay(10L)
+            }
+
+            player.volume = originalVolume
+            secPlayer.stop()
+            secPlayer.clearMediaItems()
             crossfadeJob = null
         }
     }
@@ -297,6 +335,9 @@ class MusicPlaybackService : MediaSessionService() {
         cancelCrossfade()
         val app = applicationContext as? MusicApplication
         app?.musicControllerManager?.detachService()
+        if (instance === this) {
+            instance = null
+        }
         crossfadePlayer?.release()
         crossfadePlayer = null
         mediaSession?.run {
