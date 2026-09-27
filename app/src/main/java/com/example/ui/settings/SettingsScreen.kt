@@ -756,7 +756,7 @@ private fun SettingsSwitchRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                haptic.performHaptic(HapticFeedbackType.TOGGLE)
+                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
                 onCheckedChange(!checked)
             }
             .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -784,7 +784,7 @@ private fun SettingsSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = {
-                haptic.performHaptic(HapticFeedbackType.TOGGLE)
+                haptic.performHaptic(HapticFeedbackType.LIGHT_TICK)
                 onCheckedChange(it)
             }
         )
