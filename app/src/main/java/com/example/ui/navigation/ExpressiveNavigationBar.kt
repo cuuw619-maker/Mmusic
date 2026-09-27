@@ -3,6 +3,8 @@ package com.example.ui.navigation
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -145,17 +147,33 @@ fun ExpressiveFloatingNavigationBar(
                 var isPressed by remember { mutableStateOf(false) }
                 var isDragging by remember { mutableStateOf(false) }
 
-                // Linear 150ms press scale for ONLY the inner oval (scales 1.0 -> 1.15)
-                val capsuleScale by animateFloatAsState(
-                    targetValue = if (isPressed || isDragging) 1.15f else 1.0f,
-                    animationSpec = tween(
-                        durationMillis = 150,
-                        easing = LinearEasing
+                // Dynamic bouncy squash & stretch scale for the indicator oval
+                val capsuleScaleX by animateFloatAsState(
+                    targetValue = when {
+                        isDragging -> 1.16f
+                        isPressed -> 1.08f
+                        else -> 1.0f
+                    },
+                    animationSpec = spring(
+                        dampingRatio = 0.65f,
+                        stiffness = 450f
                     ),
-                    label = "inner_oval_press_scale"
+                    label = "inner_oval_scale_x"
+                )
+                val capsuleScaleY by animateFloatAsState(
+                    targetValue = when {
+                        isDragging -> 1.06f
+                        isPressed -> 1.08f
+                        else -> 1.0f
+                    },
+                    animationSpec = spring(
+                        dampingRatio = 0.65f,
+                        stiffness = 450f
+                    ),
+                    label = "inner_oval_scale_y"
                 )
 
-                // Sync indicator position when selectedIndex changes outside of active drag
+                // Sync indicator position with bouncy spring physics when selectedIndex changes
                 LaunchedEffect(selectedIndex, slotWidthPx, indicatorWidthPx, isDragging) {
                     if (!isDragging) {
                         val targetCenterPx = (selectedIndex + 0.5f) * slotWidthPx
@@ -163,7 +181,10 @@ fun ExpressiveFloatingNavigationBar(
                         val clampedTarget = targetLeftPx.coerceIn(minAllowedLeft, maxAllowedLeft)
                         indicatorOffsetXPx.animateTo(
                             targetValue = clampedTarget,
-                            animationSpec = tween(durationMillis = 180, easing = LinearEasing)
+                            animationSpec = spring(
+                                dampingRatio = 0.70f,
+                                stiffness = 380f
+                            )
                         )
                     }
                 }
@@ -186,11 +207,16 @@ fun ExpressiveFloatingNavigationBar(
                         .height(indicatorHeightDp)
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
-                            scaleX = capsuleScale
-                            scaleY = capsuleScale
+                            scaleX = capsuleScaleX
+                            scaleY = capsuleScaleY
                         }
                         .clip(RoundedCornerShape(24.dp))
                         .background(MaterialTheme.colorScheme.primaryContainer)
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(24.dp)
+                        )
                         .testTag("nav_selected_indicator")
                 )
 
@@ -214,6 +240,23 @@ fun ExpressiveFloatingNavigationBar(
                             label = "nav_content_color_${destination.route}"
                         )
 
+                        val tabIconScale by animateFloatAsState(
+                            targetValue = if (isSelected) 1.12f else 1.0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.52f,
+                                stiffness = 420f
+                            ),
+                            label = "tab_icon_scale_${destination.route}"
+                        )
+                        val tabIconOffsetY by animateDpAsState(
+                            targetValue = if (isSelected) (-2).dp else 0.dp,
+                            animationSpec = spring(
+                                dampingRatio = 0.65f,
+                                stiffness = 420f
+                            ),
+                            label = "tab_icon_offset_y_${destination.route}"
+                        )
+
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -222,16 +265,25 @@ fun ExpressiveFloatingNavigationBar(
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
-                                modifier = Modifier.padding(horizontal = 2.dp),
+                                modifier = Modifier
+                                    .padding(horizontal = 2.dp)
+                                    .graphicsLayer {
+                                        translationY = tabIconOffsetY.toPx()
+                                    },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                // Icon strictly 22dp with 1:1 aspect ratio, never scaled or stretched
+                                // Icon with bouncy pop scale when active
                                 Icon(
                                     imageVector = destination.icon,
                                     contentDescription = destination.title,
                                     tint = contentColor,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .graphicsLayer {
+                                            scaleX = tabIconScale
+                                            scaleY = tabIconScale
+                                        }
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 // Title text always visible for all 5 tabs
@@ -344,12 +396,12 @@ fun ExpressiveFloatingNavigationBar(
                                             val targetCenter = (closestIndex + 0.5f) * slotWidthPx
                                             val targetLeft = (targetCenter - indicatorWidthPx / 2f)
                                                 .coerceIn(minAllowedLeft, maxAllowedLeft)
-                                            // Controlled subtle bounce upon settling into target center
+                                            // Controlled lively bounce upon settling into target center
                                             indicatorOffsetXPx.animateTo(
                                                 targetValue = targetLeft,
                                                 animationSpec = spring(
-                                                    dampingRatio = 0.82f,
-                                                    stiffness = 500f
+                                                    dampingRatio = 0.68f,
+                                                    stiffness = 400f
                                                 )
                                             )
                                         }

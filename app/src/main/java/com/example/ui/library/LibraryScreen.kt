@@ -356,7 +356,11 @@ private fun SongsTab(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
         ) {
-            items(songs, key = { it.id }) { song ->
+            items(
+                items = songs,
+                key = { it.id },
+                contentType = { "song" }
+            ) { song ->
                 SongListItem(
                     song = song,
                     isPlaying = playbackState.currentSong?.id == song.id && playbackState.isPlaying,
@@ -365,7 +369,9 @@ private fun SongsTab(
                     onToggleFavorite = { onToggleFavorite(song.id) },
                     onAddToPlaylist = { onAddToPlaylist(song) },
                     onAddToQueue = { onAddToQueue(song) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
                 )
             }
         }
@@ -417,11 +423,17 @@ private fun ArtistsTab(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
         ) {
-            items(artists, key = { it.name }) { artist ->
+            items(
+                items = artists,
+                key = { it.name },
+                contentType = { "artist" }
+            ) { artist ->
                 ArtistListItem(
                     artist = artist,
                     onClick = { onSelectArtist(artist) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
                 )
             }
         }
@@ -444,11 +456,17 @@ private fun FoldersTab(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
         ) {
-            items(folders, key = { it.path + it.name }) { folder ->
+            items(
+                items = folders,
+                key = { it.path + it.name },
+                contentType = { "folder" }
+            ) { folder ->
                 FolderListItem(
                     folder = folder,
                     onClick = { onSelectFolder(folder) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
                 )
             }
         }
@@ -471,12 +489,17 @@ private fun GenresTab(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
         ) {
-            items(genres, key = { it.name }) { genre ->
+            items(
+                items = genres,
+                key = { it.name },
+                contentType = { "genre" }
+            ) { genre ->
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp)
-                        .clickable { onSelectGenre(genre) },
+                        .clickable { onSelectGenre(genre) }
+                        .animateItem(),
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
@@ -560,7 +583,11 @@ fun DetailListScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
-            items(songs, key = { it.id }) { song ->
+            items(
+                items = songs,
+                key = { it.id },
+                contentType = { "song" }
+            ) { song ->
                 SongListItem(
                     song = song,
                     isPlaying = playbackState.currentSong?.id == song.id && playbackState.isPlaying,
@@ -569,7 +596,9 @@ fun DetailListScreen(
                     onToggleFavorite = { onToggleFavorite(song.id) },
                     onAddToPlaylist = { onAddToPlaylist(song) },
                     onAddToQueue = { onAddToQueue(song) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
                 )
             }
         }

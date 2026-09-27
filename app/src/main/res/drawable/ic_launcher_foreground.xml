@@ -5,31 +5,57 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Center disc with gradient -->
-    <path android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 Z">
+
+    <!-- Outer Vinyl disc with subtle lighting -->
+    <path android:pathData="M54,23 A31,31 0 1,0 54,85 A31,31 0 1,0 54,23 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="26"
-                android:startY="26"
-                android:endX="82"
-                android:endY="82"
+                android:startX="23"
+                android:startY="23"
+                android:endX="85"
+                android:endY="85"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2D273D" />
+                <item android:offset="1.0" android:color="#191524" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Outer groove ring -->
+    <path
+        android:pathData="M54,27 A27,27 0 1,0 54,81 A27,27 0 1,0 54,27 Z"
+        android:strokeWidth="0.8"
+        android:strokeColor="#25FFFFFF" />
+
+    <!-- Inner groove ring -->
+    <path
+        android:pathData="M54,32 A22,22 0 1,0 54,76 A22,22 0 1,0 54,32 Z"
+        android:strokeWidth="0.8"
+        android:strokeColor="#18FFFFFF" />
+
+    <!-- Center vibrant label badge -->
+    <path android:pathData="M54,36 A18,18 0 1,0 54,72 A18,18 0 1,0 54,36 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="36"
+                android:startY="36"
+                android:endX="72"
+                android:endY="72"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#7C4DFF" />
-                <item android:offset="0.6" android:color="#9C27B0" />
+                <item android:offset="0.5" android:color="#9C27B0" />
                 <item android:offset="1.0" android:color="#E040FB" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Concentric subtle inner groove ring -->
+    <!-- Center spindle hole ring -->
     <path
-        android:pathData="M54,34 A20,20 0 1,0 54,74 A20,20 0 1,0 54,34 Z"
-        android:strokeWidth="1.5"
-        android:strokeColor="#33FFFFFF"
-        android:strokeLineCap="round" />
+        android:pathData="M54,51 A3,3 0 1,0 54,57 A3,3 0 1,0 54,51 Z"
+        android:fillColor="#191524" />
 
-    <!-- Pure crisp music note vector (scaled & centered within safe zone) -->
+    <!-- Pure crisp music note vector (centered within the badge) -->
     <path
-        android:pathData="M65,37 L48,41.5 L48,58.8 A5,5 0 0,0 45,58 C42.24,58 40,59.79 40,62 C40,64.21 42.24,66 45,66 C47.76,66 50,64.21 50,62 L50,45.8 L63,42.5 L63,55.8 A5,5 0 0,0 60,55 C57.24,55 55,56.79 55,59 C55,61.21 57.24,63 60,63 C62.76,63 65,61.21 65,59 L65,37 Z"
+        android:pathData="M65,40 L45,44.5 L45,60.8 A4.5,4.5 0 0,0 42.5,60 C40.01,60 38,61.57 38,63.5 C38,65.43 40.01,67 42.5,67 C44.99,67 47,65.43 47,63.5 L47,48.5 L62,45.2 L62,58.8 A4.5,4.5 0 0,0 59.5,58 C57.01,58 55,59.57 55,61.5 C55,63.43 57.01,65 59.5,65 C61.99,65 64,63.43 64,61.5 L65,40 Z"
         android:fillColor="#FFFFFFFF" />
 </vector>

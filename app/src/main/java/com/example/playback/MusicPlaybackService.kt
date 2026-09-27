@@ -239,73 +239,50 @@ class MusicPlaybackService : MediaSessionService() {
 
     fun crossfadeTo(targetIndex: Int, crossfadeMs: Long) {
         if (targetIndex !in 0 until player.mediaItemCount) return
-        val targetItem = player.getMediaItemAt(targetIndex)
-        val originalVolume = 1.0f
+        val currentItem = player.currentMediaItem
+        val currentPos = player.currentPosition.coerceAtLeast(0L)
+        val secPlayer = crossfadePlayer
 
         crossfadeJob?.cancel()
 
-        val secPlayer = crossfadePlayer ?: run {
-            player.seekToDefaultPosition(targetIndex)
+        if (secPlayer == null || currentItem == null || crossfadeMs <= 0 || !player.isPlaying) {
+            player.seekTo(targetIndex, 0L)
+            player.volume = 1.0f
             player.play()
             return
         }
 
-        // Secondary player starts target track smoothly from 0 volume
+        // 1. Prepare secondary player to smoothly fade out the CURRENT outgoing track
         secPlayer.stop()
         secPlayer.clearMediaItems()
-        secPlayer.setMediaItem(targetItem, 0L)
-        secPlayer.volume = 0f
+        secPlayer.setMediaItem(currentItem, currentPos)
+        secPlayer.volume = player.volume
         secPlayer.prepare()
         secPlayer.play()
 
-        crossfadeJob = serviceScope.launch {
-            // Wait briefly for secondary player to finish buffering so audio is ready
-            var waitCount = 0
-            while (secPlayer.playbackState == Player.STATE_BUFFERING && waitCount < 15) {
-                delay(10L)
-                waitCount++
-            }
+        // 2. Main player immediately moves to the target track at 0 volume and starts playing!
+        // This ensures the main player is already playing the new track continuously without any handover seek or restart.
+        player.volume = 0f
+        player.seekTo(targetIndex, 0L)
+        player.play()
 
-            // Crossfade: player fades down 1 -> 0, secPlayer fades up 0 -> 1
-            val steps = 25
+        crossfadeJob = serviceScope.launch {
+            // Equal-power crossfade curve: cos for fade out, sin for fade in
+            val steps = 30
             val stepDelay = (crossfadeMs / steps).coerceAtLeast(10L)
             for (i in 1..steps) {
                 val fraction = i / steps.toFloat()
-                player.volume = ((1f - fraction) * originalVolume).coerceIn(0f, 1f)
-                secPlayer.volume = (fraction * originalVolume).coerceIn(0f, 1f)
+                // Equal-power crossfade ensures perceived acoustic loudness remains completely constant
+                val outVol = kotlin.math.cos(fraction * (Math.PI / 2.0)).toFloat().coerceIn(0f, 1f)
+                val inVol = kotlin.math.sin(fraction * (Math.PI / 2.0)).toFloat().coerceIn(0f, 1f)
+
+                secPlayer.volume = outVol
+                player.volume = inVol
                 delay(stepDelay)
             }
 
-            // At this point, player.volume is 0f and secPlayer is playing smoothly at 1.0f
-            player.volume = 0f
-            secPlayer.volume = originalVolume
-
-            // Pause player briefly so it does not trigger automatic track change or buffer conflict
-            player.pause()
-
-            // Prepare player on the target track at secPlayer's current position
-            val handoverPos = secPlayer.currentPosition.coerceAtLeast(0L)
-            player.seekTo(targetIndex, handoverPos)
-            player.volume = 0f
-            player.play()
-
-            // Wait until primary player is ready and actively playing to guarantee zero audio gap
-            var readyWait = 0
-            while ((!player.isPlaying || player.playbackState != Player.STATE_READY) && readyWait < 30) {
-                delay(10L)
-                readyWait++
-            }
-
-            // Smooth 30ms micro-crossfade handover: ramp player up, ramp secPlayer down
-            val microSteps = 3
-            for (step in 1..microSteps) {
-                val factor = step / microSteps.toFloat()
-                player.volume = (factor * originalVolume).coerceIn(0f, 1f)
-                secPlayer.volume = ((1f - factor) * originalVolume).coerceIn(0f, 1f)
-                delay(10L)
-            }
-
-            player.volume = originalVolume
+            // Crossfade complete: primary player is already at full volume playing the target track!
+            player.volume = 1.0f
             secPlayer.stop()
             secPlayer.clearMediaItems()
             crossfadeJob = null

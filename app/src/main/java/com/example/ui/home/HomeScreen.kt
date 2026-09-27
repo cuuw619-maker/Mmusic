@@ -262,7 +262,11 @@ fun HomeScreen(
                 SectionHeader(title = "Часто воспроизводимые")
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            items(mostPlayed.take(5), key = { "most_${it.id}" }) { song ->
+            items(
+                items = mostPlayed.take(5),
+                key = { "most_${it.id}" },
+                contentType = { "song" }
+            ) { song ->
                 SongListItem(
                     song = song,
                     isPlaying = playbackState.currentSong?.id == song.id && playbackState.isPlaying,
@@ -271,7 +275,9 @@ fun HomeScreen(
                     onToggleFavorite = { viewModel.toggleFavorite(song.id) },
                     onAddToPlaylist = { viewModel.setSongToAddToPlaylist(song) },
                     onAddToQueue = { viewModel.addToQueue(song) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
                 )
             }
         }
@@ -287,7 +293,11 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            items(recentlyAdded.take(5), key = { "added_${it.id}" }) { song ->
+            items(
+                items = recentlyAdded.take(5),
+                key = { "added_${it.id}" },
+                contentType = { "song" }
+            ) { song ->
                 SongListItem(
                     song = song,
                     isPlaying = playbackState.currentSong?.id == song.id && playbackState.isPlaying,
@@ -296,7 +306,9 @@ fun HomeScreen(
                     onToggleFavorite = { viewModel.toggleFavorite(song.id) },
                     onAddToPlaylist = { viewModel.setSongToAddToPlaylist(song) },
                     onAddToQueue = { viewModel.addToQueue(song) },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
                 )
             }
         }

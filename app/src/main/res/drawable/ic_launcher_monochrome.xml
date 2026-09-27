@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Pure silhouette for Android 13+ Themed Icons (Material You) -->
+    <!-- Centered strictly within the 66dp safe zone (between coordinates 21 and 87) -->
+    <path
+        android:pathData="M69,32 L43,38.5 L43,62.8 A7.5,7.5 0 0,0 39,61.5 C34.86,61.5 31.5,64.41 31.5,68 C31.5,71.59 34.86,74.5 39,74.5 C43.14,74.5 46.5,71.59 46.5,68 L46.5,45.2 L65.5,40.5 L65.5,58.8 A7.5,7.5 0 0,0 61.5,57.5 C57.36,57.5 54,60.41 54,64 C54,67.59 57.36,70.5 61.5,70.5 C65.64,70.5 69,67.59 69,64 L69,32 Z"
+        android:fillColor="#FFFFFFFF" />
+</vector>

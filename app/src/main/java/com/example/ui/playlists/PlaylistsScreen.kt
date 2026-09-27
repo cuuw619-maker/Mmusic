@@ -192,12 +192,17 @@ fun PlaylistsScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 120.dp)
                         ) {
-                            items(playlists, key = { it.id }) { playlist ->
+                            items(
+                                items = playlists,
+                                key = { it.id },
+                                contentType = { "playlist" }
+                            ) { playlist ->
                                 PlaylistItem(
                                     playlist = playlist,
                                     onClick = { viewModel.selectPlaylist(playlist) },
                                     onRename = { playlistToRename = playlist },
-                                    onDelete = { playlistToDelete = playlist }
+                                    onDelete = { playlistToDelete = playlist },
+                                    modifier = Modifier.animateItem()
                                 )
                             }
                         }
@@ -213,12 +218,13 @@ private fun PlaylistItem(
     playlist: Playlist,
     onClick: () -> Unit,
     onRename: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(onClick = onClick),
@@ -426,7 +432,11 @@ private fun PlaylistDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 120.dp)
             ) {
-                items(songs, key = { it.id }) { song ->
+                items(
+                    items = songs,
+                    key = { it.id },
+                    contentType = { "song" }
+                ) { song ->
                     SongListItem(
                         song = song,
                         isPlaying = playbackState.currentSong?.id == song.id && playbackState.isPlaying,
@@ -435,7 +445,9 @@ private fun PlaylistDetailScreen(
                         onToggleFavorite = { onToggleFavorite(song.id) },
                         onAddToPlaylist = { onAddToPlaylist(song) },
                         onAddToQueue = { onAddToQueue(song) },
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = 12.dp)
                     )
                 }
             }

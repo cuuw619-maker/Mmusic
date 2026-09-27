@@ -354,6 +354,8 @@ class MusicControllerManager(
 
     fun playSong(song: Song, queue: List<Song> = listOf(song)) {
         val controller = mediaController ?: return
+        getService()?.cancelCrossfade()
+        isCrossfading = false
         originalQueue = queue.toMutableList()
         currentQueueSongs.clear()
         currentQueueSongs.addAll(queue)
@@ -381,6 +383,8 @@ class MusicControllerManager(
     fun playQueue(queue: List<Song>, startIndex: Int = 0) {
         if (queue.isEmpty()) return
         val controller = mediaController ?: return
+        getService()?.cancelCrossfade()
+        isCrossfading = false
         originalQueue = queue.toMutableList()
         currentQueueSongs.clear()
         currentQueueSongs.addAll(queue)
@@ -411,6 +415,8 @@ class MusicControllerManager(
 
     fun seekTo(positionMs: Long) {
         val controller = mediaController ?: return
+        getService()?.cancelCrossfade()
+        isCrossfading = false
         controller.seekTo(positionMs)
         _playbackState.value = _playbackState.value.copy(currentPositionMs = positionMs)
     }
