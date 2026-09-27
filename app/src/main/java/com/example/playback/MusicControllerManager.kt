@@ -267,8 +267,9 @@ class MusicControllerManager(
 
                             if (targetIdx != C.INDEX_UNSET) {
                                 isCrossfading = true
-                                if (playbackService != null) {
-                                    playbackService?.crossfadeTo(targetIdx, crossfadeMs)
+                                val service = getService()
+                                if (service != null) {
+                                    service.crossfadeTo(targetIdx, crossfadeMs)
                                 } else {
                                     performCrossfadeNext(crossfadeMs)
                                 }
@@ -323,27 +324,31 @@ class MusicControllerManager(
 
     // Playback control APIs
     fun restoreLastPlayedSong(song: Song, queue: List<Song> = listOf(song), positionMs: Long = 0L) {
-        val controller = mediaController ?: return
-        if (controller.currentMediaItem != null || _playbackState.value.currentSong != null) return
-        originalQueue = queue.toMutableList()
-        currentQueueSongs.clear()
-        currentQueueSongs.addAll(queue)
-
         val startIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        val mediaItems = queue.map { songToMediaItem(it) }
-
-        controller.setMediaItems(mediaItems, startIndex, positionMs.coerceAtLeast(0L))
-        controller.prepare()
-
         val newState = _playbackState.value.copy(
             currentSong = song,
             isPlaying = false,
             currentPositionMs = positionMs.coerceAtLeast(0L),
             durationMs = song.durationMs,
-            queue = currentQueueSongs.toList(),
+            queue = queue,
             currentQueueIndex = startIndex
         )
         _playbackState.value = newState
+
+        val controller = mediaController
+        if (controller == null) {
+            pendingRestore = Triple(song, queue, positionMs)
+            return
+        }
+        if (controller.currentMediaItem != null) return
+        originalQueue = queue.toMutableList()
+        currentQueueSongs.clear()
+        currentQueueSongs.addAll(queue)
+
+        val mediaItems = queue.map { songToMediaItem(it) }
+
+        controller.setMediaItems(mediaItems, startIndex, positionMs.coerceAtLeast(0L))
+        controller.prepare()
         pluginManager?.dispatchQueueChanged(currentQueueSongs)
     }
 
@@ -426,8 +431,9 @@ class MusicControllerManager(
         }
 
         if (targetIdx != C.INDEX_UNSET) {
-            if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
-                playbackService?.crossfadeTo(targetIdx, crossfadeMs)
+            val service = getService()
+            if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && service != null) {
+                service.crossfadeTo(targetIdx, crossfadeMs)
             } else {
                 controller.seekTo(targetIdx, 0L)
                 controller.play()
@@ -454,8 +460,9 @@ class MusicControllerManager(
                 val crossfadeEnabled = preferencesManager.crossfadeEnabled.value
                 val crossfadeDurationSec = preferencesManager.crossfadeDuration.value
                 val crossfadeMs = (crossfadeDurationSec * 1000).toLong()
-                if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && playbackService != null) {
-                    playbackService?.crossfadeTo(targetIdx, crossfadeMs)
+                val service = getService()
+                if (crossfadeEnabled && crossfadeMs > 0 && controller.isPlaying && service != null) {
+                    service.crossfadeTo(targetIdx, crossfadeMs)
                 } else {
                     controller.seekTo(targetIdx, 0L)
                     controller.play()

@@ -4,8 +4,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -79,22 +82,35 @@ fun MiniPlayer(
 
     AnimatedVisibility(
         visible = true,
-        enter = fadeIn(FluidMotionConstants.pressSpring()) + slideInVertically(FluidMotionConstants.pressSpring()) { it },
-        exit = fadeOut(FluidMotionConstants.pressSpring()) + slideOutVertically(FluidMotionConstants.pressSpring()) { it }
+        enter = slideInVertically(
+            animationSpec = spring(
+                dampingRatio = 0.82f,
+                stiffness = 400f
+            )
+        ) { it / 2 } + fadeIn(tween(220)) + scaleIn(
+            initialScale = 0.94f,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 400f)
+        ),
+        exit = slideOutVertically(
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 400f)
+        ) { it / 2 } + fadeOut(tween(180)) + scaleOut(targetScale = 0.94f)
     ) {
         Card(
+            onClick = {
+                performHapticFeedback(view, HapticType.LIGHT)
+                onClick()
+            },
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 4.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        performHapticFeedback(view, HapticType.LIGHT)
-                        onClick()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
+                        if (dragAmount < -18f) {
+                            performHapticFeedback(view, HapticType.LIGHT)
+                            onClick()
+                        }
                     }
-                )
+                }
                 .testTag("mini_player_card"),
             shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(

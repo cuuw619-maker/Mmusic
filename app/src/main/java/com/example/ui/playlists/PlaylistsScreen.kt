@@ -1,6 +1,15 @@
 package com.example.ui.playlists
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -102,84 +111,96 @@ fun PlaylistsScreen(
         )
     }
 
-    // Playlist Detail View
-    if (selectedPlaylist != null) {
-        val playlist = selectedPlaylist!!
-        PlaylistDetailScreen(
-            playlist = playlist,
-            songs = playlistSongs,
-            playbackState = playbackState,
-            onBack = { viewModel.selectPlaylist(null) },
-            onPlaySong = { song -> viewModel.playSong(song, playlistSongs) },
-            onPlayAll = { viewModel.playQueue(playlistSongs, 0) },
-            onShuffleAll = { viewModel.playQueue(playlistSongs.shuffled(), 0) },
-            onRemoveSong = { songId -> viewModel.removeSongFromPlaylist(playlist.id, songId) },
-            onRename = { playlistToRename = playlist },
-            onDelete = { playlistToDelete = playlist },
-            onToggleFavorite = { viewModel.toggleFavorite(it) },
-            onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-            onAddToQueue = { viewModel.addToQueue(it) }
-        )
-        return
-    }
-
-    // Playlists List View
-    Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("playlists_screen"),
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.setCreatePlaylistDialogVisible(true) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier
-                    .padding(bottom = 90.dp)
-                    .testTag("create_playlist_fab")
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Создать плейлист")
-            }
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            Text(
-                text = "Плейлисты",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-            )
-
-            if (playlists.isEmpty()) {
-                EmptyStateView(
-                    icon = Icons.Rounded.QueueMusic,
-                    title = "Нет плейлистов",
-                    subtitle = "Создавайте свои подборки и любимые миксы",
-                    actionButton = {
-                        androidx.compose.material3.Button(
-                            onClick = { viewModel.setCreatePlaylistDialogVisible(true) }
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Создать плейлист")
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+    AnimatedContent(
+        targetState = selectedPlaylist != null,
+        transitionSpec = {
+            if (targetState) {
+                (slideInHorizontally(tween(220, easing = LinearOutSlowInEasing)) { it / 3 } + fadeIn(tween(200))) togetherWith
+                (slideOutHorizontally(tween(180, easing = FastOutLinearInEasing)) { -it / 3 } + fadeOut(tween(160)))
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 120.dp)
+                (slideInHorizontally(tween(220, easing = LinearOutSlowInEasing)) { -it / 3 } + fadeIn(tween(200))) togetherWith
+                (slideOutHorizontally(tween(180, easing = FastOutLinearInEasing)) { it / 3 } + fadeOut(tween(160)))
+            }
+        },
+        label = "PlaylistDetailTransition"
+    ) { isDetail ->
+        if (isDetail && selectedPlaylist != null) {
+            val playlist = selectedPlaylist!!
+            PlaylistDetailScreen(
+                playlist = playlist,
+                songs = playlistSongs,
+                playbackState = playbackState,
+                onBack = { viewModel.selectPlaylist(null) },
+                onPlaySong = { song -> viewModel.playSong(song, playlistSongs) },
+                onPlayAll = { viewModel.playQueue(playlistSongs, 0) },
+                onShuffleAll = { viewModel.playQueue(playlistSongs.shuffled(), 0) },
+                onRemoveSong = { songId -> viewModel.removeSongFromPlaylist(playlist.id, songId) },
+                onRename = { playlistToRename = playlist },
+                onDelete = { playlistToDelete = playlist },
+                onToggleFavorite = { viewModel.toggleFavorite(it) },
+                onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
+                onAddToQueue = { viewModel.addToQueue(it) }
+            )
+        } else {
+            // Playlists List View
+            Scaffold(
+                modifier = modifier
+                    .fillMaxSize()
+                    .testTag("playlists_screen"),
+                floatingActionButton = {
+                    FloatingActionButton(
+                        onClick = { viewModel.setCreatePlaylistDialogVisible(true) },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .padding(bottom = 90.dp)
+                            .testTag("create_playlist_fab")
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Создать плейлист")
+                    }
+                }
+            ) { paddingValues ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
                 ) {
-                    items(playlists, key = { it.id }) { playlist ->
-                        PlaylistItem(
-                            playlist = playlist,
-                            onClick = { viewModel.selectPlaylist(playlist) },
-                            onRename = { playlistToRename = playlist },
-                            onDelete = { playlistToDelete = playlist }
+                    Text(
+                        text = "Плейлисты",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                    )
+
+                    if (playlists.isEmpty()) {
+                        EmptyStateView(
+                            icon = Icons.Rounded.QueueMusic,
+                            title = "Нет плейлистов",
+                            subtitle = "Создавайте свои подборки и любимые миксы",
+                            actionButton = {
+                                androidx.compose.material3.Button(
+                                    onClick = { viewModel.setCreatePlaylistDialogVisible(true) }
+                                ) {
+                                    Icon(Icons.Filled.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Создать плейлист")
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
                         )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 120.dp)
+                        ) {
+                            items(playlists, key = { it.id }) { playlist ->
+                                PlaylistItem(
+                                    playlist = playlist,
+                                    onClick = { viewModel.selectPlaylist(playlist) },
+                                    onRename = { playlistToRename = playlist },
+                                    onDelete = { playlistToDelete = playlist }
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -119,7 +119,7 @@ fun ExpressiveFloatingNavigationBar(
                 )
                 .clip(RoundedCornerShape(32.dp))
                 .testTag("floating_navigation_bar"),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 4.dp,
             shape = RoundedCornerShape(32.dp)
         ) {

@@ -261,12 +261,20 @@ fun MainApp(
             visible = isNowPlayingExpanded && playbackState.currentSong != null,
             enter = slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = tween(180)),
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(200)) + scaleIn(
+                initialScale = 0.94f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            ),
             exit = slideOutVertically(
                 targetOffsetY = { it },
-                animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = tween(180))
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            ) + fadeOut(animationSpec = tween(160)) + scaleOut(
+                targetScale = 0.94f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            )
         ) {
             NowPlayingScreen(
                 playbackState = playbackState,
@@ -373,8 +381,11 @@ private fun AppScreenContent(
     AnimatedContent(
         targetState = destination,
         transitionSpec = {
-            fadeIn(animationSpec = tween(160, easing = LinearOutSlowInEasing)) togetherWith
-            fadeOut(animationSpec = tween(120, easing = FastOutLinearInEasing))
+            (fadeIn(animationSpec = tween(130, easing = LinearOutSlowInEasing)) + scaleIn(
+                initialScale = 0.985f,
+                animationSpec = tween(130, easing = LinearOutSlowInEasing)
+            )) togetherWith
+            fadeOut(animationSpec = tween(90, easing = FastOutLinearInEasing))
         },
         label = "TabScreenTransition"
     ) { targetDest ->

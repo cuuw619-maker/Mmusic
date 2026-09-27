@@ -1,6 +1,15 @@
 package com.example.ui.library
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -97,84 +106,106 @@ fun LibraryScreen(
     val tabs = listOf("Песни", "Альбомы", "Исполнители", "Папки", "Жанры")
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // Detail Drill-down handling
-    if (selectedAlbum != null) {
-        val album = selectedAlbum!!
-        val albumSongs = viewModel.repository.getSongsForAlbum(album.id)
-        DetailListScreen(
-            title = album.title,
-            subtitle = "${album.artist} • ${albumSongs.size} треков",
-            songs = albumSongs,
-            playbackState = playbackState,
-            onBack = { viewModel.selectAlbum(null) },
-            onPlaySong = { song -> viewModel.playSong(song, albumSongs) },
-            onPlayAll = { viewModel.playQueue(albumSongs, 0) },
-            onToggleFavorite = { viewModel.toggleFavorite(it) },
-            onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-            onAddToQueue = { viewModel.addToQueue(it) }
-        )
-        return
+    val currentDetail = when {
+        selectedAlbum != null -> "album"
+        selectedArtist != null -> "artist"
+        selectedFolder != null -> "folder"
+        selectedGenre != null -> "genre"
+        else -> "main"
     }
 
-    if (selectedArtist != null) {
-        val artist = selectedArtist!!
-        val artistSongs = viewModel.repository.getSongsForArtist(artist.name)
-        DetailListScreen(
-            title = artist.name,
-            subtitle = "${artistSongs.size} треков",
-            songs = artistSongs,
-            playbackState = playbackState,
-            onBack = { viewModel.selectArtist(null) },
-            onPlaySong = { song -> viewModel.playSong(song, artistSongs) },
-            onPlayAll = { viewModel.playQueue(artistSongs, 0) },
-            onToggleFavorite = { viewModel.toggleFavorite(it) },
-            onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-            onAddToQueue = { viewModel.addToQueue(it) }
-        )
-        return
-    }
-
-    if (selectedFolder != null) {
-        val folder = selectedFolder!!
-        val folderSongs = viewModel.repository.getSongsForFolder(folder.name)
-        DetailListScreen(
-            title = folder.name,
-            subtitle = "${folderSongs.size} файлов • ${folder.path}",
-            songs = folderSongs,
-            playbackState = playbackState,
-            onBack = { viewModel.selectFolder(null) },
-            onPlaySong = { song -> viewModel.playSong(song, folderSongs) },
-            onPlayAll = { viewModel.playQueue(folderSongs, 0) },
-            onToggleFavorite = { viewModel.toggleFavorite(it) },
-            onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-            onAddToQueue = { viewModel.addToQueue(it) }
-        )
-        return
-    }
-
-    if (selectedGenre != null) {
-        val genre = selectedGenre!!
-        val genreSongs = viewModel.repository.getSongsForGenre(genre.name)
-        DetailListScreen(
-            title = genre.name,
-            subtitle = "${genreSongs.size} треков",
-            songs = genreSongs,
-            playbackState = playbackState,
-            onBack = { viewModel.selectGenre(null) },
-            onPlaySong = { song -> viewModel.playSong(song, genreSongs) },
-            onPlayAll = { viewModel.playQueue(genreSongs, 0) },
-            onToggleFavorite = { viewModel.toggleFavorite(it) },
-            onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
-            onAddToQueue = { viewModel.addToQueue(it) }
-        )
-        return
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("library_screen")
-    ) {
+    AnimatedContent(
+        targetState = currentDetail,
+        transitionSpec = {
+            if (targetState != "main") {
+                (slideInHorizontally(tween(220, easing = LinearOutSlowInEasing)) { it / 3 } + fadeIn(tween(200))) togetherWith
+                (slideOutHorizontally(tween(180, easing = FastOutLinearInEasing)) { -it / 3 } + fadeOut(tween(160)))
+            } else {
+                (slideInHorizontally(tween(220, easing = LinearOutSlowInEasing)) { -it / 3 } + fadeIn(tween(200))) togetherWith
+                (slideOutHorizontally(tween(180, easing = FastOutLinearInEasing)) { it / 3 } + fadeOut(tween(160)))
+            }
+        },
+        label = "LibraryDetailTransition"
+    ) { detailView ->
+        when (detailView) {
+            "album" -> {
+                val album = selectedAlbum
+                if (album != null) {
+                    val albumSongs = viewModel.repository.getSongsForAlbum(album.id)
+                    DetailListScreen(
+                        title = album.title,
+                        subtitle = "${album.artist} • ${albumSongs.size} треков",
+                        songs = albumSongs,
+                        playbackState = playbackState,
+                        onBack = { viewModel.selectAlbum(null) },
+                        onPlaySong = { song -> viewModel.playSong(song, albumSongs) },
+                        onPlayAll = { viewModel.playQueue(albumSongs, 0) },
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                        onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
+                        onAddToQueue = { viewModel.addToQueue(it) }
+                    )
+                }
+            }
+            "artist" -> {
+                val artist = selectedArtist
+                if (artist != null) {
+                    val artistSongs = viewModel.repository.getSongsForArtist(artist.name)
+                    DetailListScreen(
+                        title = artist.name,
+                        subtitle = "${artistSongs.size} треков",
+                        songs = artistSongs,
+                        playbackState = playbackState,
+                        onBack = { viewModel.selectArtist(null) },
+                        onPlaySong = { song -> viewModel.playSong(song, artistSongs) },
+                        onPlayAll = { viewModel.playQueue(artistSongs, 0) },
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                        onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
+                        onAddToQueue = { viewModel.addToQueue(it) }
+                    )
+                }
+            }
+            "folder" -> {
+                val folder = selectedFolder
+                if (folder != null) {
+                    val folderSongs = viewModel.repository.getSongsForFolder(folder.name)
+                    DetailListScreen(
+                        title = folder.name,
+                        subtitle = "${folderSongs.size} файлов • ${folder.path}",
+                        songs = folderSongs,
+                        playbackState = playbackState,
+                        onBack = { viewModel.selectFolder(null) },
+                        onPlaySong = { song -> viewModel.playSong(song, folderSongs) },
+                        onPlayAll = { viewModel.playQueue(folderSongs, 0) },
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                        onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
+                        onAddToQueue = { viewModel.addToQueue(it) }
+                    )
+                }
+            }
+            "genre" -> {
+                val genre = selectedGenre
+                if (genre != null) {
+                    val genreSongs = viewModel.repository.getSongsForGenre(genre.name)
+                    DetailListScreen(
+                        title = genre.name,
+                        subtitle = "${genreSongs.size} треков",
+                        songs = genreSongs,
+                        playbackState = playbackState,
+                        onBack = { viewModel.selectGenre(null) },
+                        onPlaySong = { song -> viewModel.playSong(song, genreSongs) },
+                        onPlayAll = { viewModel.playQueue(genreSongs, 0) },
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                        onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
+                        onAddToQueue = { viewModel.addToQueue(it) }
+                    )
+                }
+            }
+            else -> {
+                Column(
+                    modifier = modifier
+                        .fillMaxSize()
+                        .testTag("library_screen")
+                ) {
         // Search Bar & Sort Button
         Row(
             modifier = Modifier
@@ -300,6 +331,9 @@ fun LibraryScreen(
             }
         }
     }
+}
+}
+}
 }
 
 @Composable
