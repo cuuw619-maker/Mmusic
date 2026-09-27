@@ -25,11 +25,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
@@ -51,23 +54,26 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ui.components.OvalTabItem
+import com.example.ui.components.OvalTabRow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.Album
 import com.example.model.Artist
@@ -103,7 +109,17 @@ fun LibraryScreen(
     val selectedGenre by viewModel.selectedGenre.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Песни", "Альбомы", "Исполнители", "Папки", "Жанры")
+    val songsListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var lastSortOrder by remember { mutableStateOf(currentSort) }
+
+    LaunchedEffect(currentSort, songs) {
+        if (lastSortOrder != currentSort) {
+            lastSortOrder = currentSort
+            songsListState.scrollToItem(0, 0)
+        }
+    }
+
     var showSortMenu by remember { mutableStateOf(false) }
 
     val currentDetail = when {
@@ -273,6 +289,9 @@ fun LibraryScreen(
                             onClick = {
                                 viewModel.setSortOrder(order)
                                 showSortMenu = false
+                                scope.launch {
+                                    songsListState.scrollToItem(0, 0)
+                                }
                             }
                         )
                     }
@@ -280,33 +299,46 @@ fun LibraryScreen(
             }
         }
 
-        // Tabs: Songs, Albums, Artists, Folders, Genres
-        PrimaryTabRow(
-            selectedTabIndex = selectedTab,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium
-                            )
-                        )
-                    }
-                )
-            }
+        // Oval in Oval Tabs: Songs, Albums, Artists, Folders, Genres
+        val libraryTabs = remember {
+            listOf(
+                OvalTabItem("Песни", Icons.Rounded.MusicNote),
+                OvalTabItem("Альбомы", Icons.Rounded.Album),
+                OvalTabItem("Артисты", Icons.Rounded.Person),
+                OvalTabItem("Папки", Icons.Rounded.Folder),
+                OvalTabItem("Жанры", Icons.Rounded.GraphicEq)
+            )
         }
 
-        // Content for selected Tab
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (selectedTab) {
+        OvalTabRow(
+            tabs = libraryTabs,
+            selectedIndex = selectedTab,
+            onTabSelected = { selectedTab = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            containerHeightDp = 46
+        )
+
+        // Content for selected Tab with expressive transitions
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                if (targetState > initialState) {
+                    (slideInHorizontally(tween(200, easing = LinearOutSlowInEasing)) { it / 4 } + fadeIn(tween(180))) togetherWith
+                    (slideOutHorizontally(tween(160, easing = FastOutLinearInEasing)) { -it / 4 } + fadeOut(tween(140)))
+                } else {
+                    (slideInHorizontally(tween(200, easing = LinearOutSlowInEasing)) { -it / 4 } + fadeIn(tween(180))) togetherWith
+                    (slideOutHorizontally(tween(160, easing = FastOutLinearInEasing)) { it / 4 } + fadeOut(tween(140)))
+                }
+            },
+            label = "library_tab_transition"
+        ) { tabIndex ->
+            when (tabIndex) {
                 0 -> SongsTab(
                     songs = songs,
                     playbackState = playbackState,
+                    listState = songsListState,
                     onPlaySong = { song -> viewModel.playSong(song, songs) },
                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                     onAddToPlaylist = { viewModel.setSongToAddToPlaylist(it) },
@@ -340,6 +372,7 @@ fun LibraryScreen(
 private fun SongsTab(
     songs: List<Song>,
     playbackState: com.example.model.PlaybackState,
+    listState: LazyListState,
     onPlaySong: (Song) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onAddToPlaylist: (Song) -> Unit,
@@ -353,6 +386,7 @@ private fun SongsTab(
         )
     } else {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
         ) {

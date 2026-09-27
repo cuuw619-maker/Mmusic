@@ -45,6 +45,27 @@ class PreferencesManager(context: Context) {
     private val _pitchSemitones = MutableStateFlow(prefs.getInt(KEY_PITCH_SEMITONES, 0))
     val pitchSemitones: StateFlow<Int> = _pitchSemitones.asStateFlow()
 
+    private val _pitchCents = MutableStateFlow(prefs.getInt(KEY_PITCH_CENTS, 0))
+    val pitchCents: StateFlow<Int> = _pitchCents.asStateFlow()
+
+    private val _audioEngineMode = MutableStateFlow(prefs.getString(KEY_AUDIO_ENGINE_MODE, "STUDIO") ?: "STUDIO")
+    val audioEngineMode: StateFlow<String> = _audioEngineMode.asStateFlow()
+
+    private val _antiCrackleBuffer = MutableStateFlow(prefs.getBoolean(KEY_ANTI_CRACKLE_BUFFER, true))
+    val antiCrackleBuffer: StateFlow<Boolean> = _antiCrackleBuffer.asStateFlow()
+
+    private val _playerSwipeDirection = MutableStateFlow(prefs.getString(KEY_PLAYER_SWIPE_DIR, "RIGHT_NEXT_LEFT_PREV") ?: "RIGHT_NEXT_LEFT_PREV")
+    val playerSwipeDirection: StateFlow<String> = _playerSwipeDirection.asStateFlow()
+
+    private val _doubleTapSeekSeconds = MutableStateFlow(prefs.getInt(KEY_DOUBLE_TAP_SEEK, 10))
+    val doubleTapSeekSeconds: StateFlow<Int> = _doubleTapSeekSeconds.asStateFlow()
+
+    private val _volumeGestureEnabled = MutableStateFlow(prefs.getBoolean(KEY_VOLUME_GESTURE, true))
+    val volumeGestureEnabled: StateFlow<Boolean> = _volumeGestureEnabled.asStateFlow()
+
+    private val _filterShortAudio = MutableStateFlow(prefs.getBoolean(KEY_FILTER_SHORT_AUDIO, false))
+    val filterShortAudio: StateFlow<Boolean> = _filterShortAudio.asStateFlow()
+
     private val _preservePitch = MutableStateFlow(prefs.getBoolean(KEY_PRESERVE_PITCH, true))
     val preservePitch: StateFlow<Boolean> = _preservePitch.asStateFlow()
 
@@ -197,6 +218,43 @@ class PreferencesManager(context: Context) {
         _pitchSemitones.value = semitones
     }
 
+    fun setPitchCents(cents: Int) {
+        val clamped = cents.coerceIn(-50, 50)
+        prefs.edit().putInt(KEY_PITCH_CENTS, clamped).apply()
+        _pitchCents.value = clamped
+    }
+
+    fun setAudioEngineMode(mode: String) {
+        prefs.edit().putString(KEY_AUDIO_ENGINE_MODE, mode).apply()
+        _audioEngineMode.value = mode
+    }
+
+    fun setAntiCrackleBuffer(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ANTI_CRACKLE_BUFFER, enabled).apply()
+        _antiCrackleBuffer.value = enabled
+    }
+
+    fun setPlayerSwipeDirection(dir: String) {
+        prefs.edit().putString(KEY_PLAYER_SWIPE_DIR, dir).apply()
+        _playerSwipeDirection.value = dir
+    }
+
+    fun setDoubleTapSeekSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(5, 30)
+        prefs.edit().putInt(KEY_DOUBLE_TAP_SEEK, clamped).apply()
+        _doubleTapSeekSeconds.value = clamped
+    }
+
+    fun setVolumeGestureEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_VOLUME_GESTURE, enabled).apply()
+        _volumeGestureEnabled.value = enabled
+    }
+
+    fun setFilterShortAudio(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_FILTER_SHORT_AUDIO, enabled).apply()
+        _filterShortAudio.value = enabled
+    }
+
     fun setPreservePitch(preserve: Boolean) {
         prefs.edit().putBoolean(KEY_PRESERVE_PITCH, preserve).apply()
         _preservePitch.value = preserve
@@ -321,6 +379,13 @@ class PreferencesManager(context: Context) {
         private const val KEY_AMOLED_DARK = "key_amoled_dark"
         private const val KEY_PLAYBACK_SPEED = "key_playback_speed"
         private const val KEY_PITCH_SEMITONES = "key_pitch_semitones"
+        private const val KEY_PITCH_CENTS = "key_pitch_cents"
+        private const val KEY_AUDIO_ENGINE_MODE = "key_audio_engine_mode"
+        private const val KEY_ANTI_CRACKLE_BUFFER = "key_anti_crackle_buffer"
+        private const val KEY_PLAYER_SWIPE_DIR = "key_player_swipe_dir"
+        private const val KEY_DOUBLE_TAP_SEEK = "key_double_tap_seek"
+        private const val KEY_VOLUME_GESTURE = "key_volume_gesture"
+        private const val KEY_FILTER_SHORT_AUDIO = "key_filter_short_audio"
         private const val KEY_PRESERVE_PITCH = "key_preserve_pitch"
         private const val KEY_CROSSFADE_ENABLED = "key_crossfade_enabled"
         private const val KEY_CROSSFADE_DURATION = "key_crossfade_duration"

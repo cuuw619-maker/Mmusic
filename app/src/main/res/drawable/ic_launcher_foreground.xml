@@ -6,56 +6,27 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer Vinyl disc with subtle lighting -->
-    <path android:pathData="M54,23 A31,31 0 1,0 54,85 A31,31 0 1,0 54,23 Z">
+    <!-- Minimalist, pure, modern musical insignia centered in the 66dp safe zone (21-87) -->
+    <!-- Subtle soft glow accent -->
+    <path
+        android:pathData="M69,32 L43,38.5 L43,62.8 A7.5,7.5 0 0,0 39,61.5 C34.86,61.5 31.5,64.41 31.5,68 C31.5,71.59 34.86,74.5 39,74.5 C43.14,74.5 46.5,71.59 46.5,68 L46.5,45.2 L65.5,40.5 L65.5,58.8 A7.5,7.5 0 0,0 61.5,57.5 C57.36,57.5 54,60.41 54,64 C54,67.59 57.36,70.5 61.5,70.5 C65.64,70.5 69,67.59 69,64 L69,32 Z"
+        android:strokeWidth="4"
+        android:strokeColor="#25FFFFFF"
+        android:strokeLineJoin="round" />
+
+    <!-- Pure minimalist white silhouette with crisp gradient brilliance -->
+    <path
+        android:pathData="M69,32 L43,38.5 L43,62.8 A7.5,7.5 0 0,0 39,61.5 C34.86,61.5 31.5,64.41 31.5,68 C31.5,71.59 34.86,74.5 39,74.5 C43.14,74.5 46.5,71.59 46.5,68 L46.5,45.2 L65.5,40.5 L65.5,58.8 A7.5,7.5 0 0,0 61.5,57.5 C57.36,57.5 54,60.41 54,64 C54,67.59 57.36,70.5 61.5,70.5 C65.64,70.5 69,67.59 69,64 L69,32 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="23"
-                android:startY="23"
-                android:endX="85"
-                android:endY="85"
+                android:startX="43"
+                android:startY="32"
+                android:endX="69"
+                android:endY="74"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#2D273D" />
-                <item android:offset="1.0" android:color="#191524" />
+                <item android:offset="0.0" android:color="#FFFFFF" />
+                <item android:offset="1.0" android:color="#EDE7F6" />
             </gradient>
         </aapt:attr>
     </path>
-
-    <!-- Outer groove ring -->
-    <path
-        android:pathData="M54,27 A27,27 0 1,0 54,81 A27,27 0 1,0 54,27 Z"
-        android:strokeWidth="0.8"
-        android:strokeColor="#25FFFFFF" />
-
-    <!-- Inner groove ring -->
-    <path
-        android:pathData="M54,32 A22,22 0 1,0 54,76 A22,22 0 1,0 54,32 Z"
-        android:strokeWidth="0.8"
-        android:strokeColor="#18FFFFFF" />
-
-    <!-- Center vibrant label badge -->
-    <path android:pathData="M54,36 A18,18 0 1,0 54,72 A18,18 0 1,0 54,36 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="36"
-                android:startY="36"
-                android:endX="72"
-                android:endY="72"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#7C4DFF" />
-                <item android:offset="0.5" android:color="#9C27B0" />
-                <item android:offset="1.0" android:color="#E040FB" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Center spindle hole ring -->
-    <path
-        android:pathData="M54,51 A3,3 0 1,0 54,57 A3,3 0 1,0 54,51 Z"
-        android:fillColor="#191524" />
-
-    <!-- Pure crisp music note vector (centered within the badge) -->
-    <path
-        android:pathData="M65,40 L45,44.5 L45,60.8 A4.5,4.5 0 0,0 42.5,60 C40.01,60 38,61.57 38,63.5 C38,65.43 40.01,67 42.5,67 C44.99,67 47,65.43 47,63.5 L47,48.5 L62,45.2 L62,58.8 A4.5,4.5 0 0,0 59.5,58 C57.01,58 55,59.57 55,61.5 C55,63.43 57.01,65 59.5,65 C61.99,65 64,63.43 64,61.5 L65,40 Z"
-        android:fillColor="#FFFFFFFF" />
 </vector>

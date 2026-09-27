@@ -133,6 +133,7 @@ fun MainApp(
     val sleepTimerState by viewModel.sleepTimerState.collectAsStateWithLifecycle()
     val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
     val pitchSemitones by viewModel.pitchSemitones.collectAsStateWithLifecycle()
+    val pitchCents by viewModel.pitchCents.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -294,8 +295,10 @@ fun MainApp(
                 onOpenSleepTimer = { viewModel.setSleepTimerSheetVisible(true) },
                 currentSpeed = playbackSpeed,
                 currentPitchSemitones = pitchSemitones,
+                currentPitchCents = pitchCents,
                 onSpeedChanged = { viewModel.setPlaybackSpeed(it) },
                 onPitchChanged = { viewModel.setPitchSemitones(it) },
+                onPitchCentsChanged = { viewModel.setPitchCents(it) },
                 modifier = Modifier.fillMaxSize()
             )
         }

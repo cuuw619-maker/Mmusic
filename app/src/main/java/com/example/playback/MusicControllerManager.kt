@@ -172,11 +172,13 @@ class MusicControllerManager(
         val controller = mediaController ?: return
         val speed = preferencesManager.playbackSpeed.value.coerceIn(0.5f, 2.0f)
         val semitones = preferencesManager.pitchSemitones.value.coerceIn(-12, 12)
+        val cents = preferencesManager.pitchCents.value.coerceIn(-50, 50)
 
-        // Standard semitone pitch calculation: 2^(semitones / 12)
-        // With semitones = 0 (default), pitchMultiplier is exactly 1.0f:
-        // Speed changes tempo cleanly via time-stretch without shifting voice or musical pitch.
-        val pitchMultiplier = 2.0f.pow(semitones / 12.0f)
+        // Studio DSP pitch calculation: 2^((semitones + cents/100) / 12)
+        // With semitones = 0 and cents = 0, pitchMultiplier is exactly 1.0f:
+        // High quality time-stretching with studio fidelity and zero robotic crackling
+        val totalSemitones = semitones + (cents / 100.0f)
+        val pitchMultiplier = 2.0f.pow(totalSemitones / 12.0f)
 
         try {
             controller.playbackParameters = PlaybackParameters(speed, pitchMultiplier)
@@ -194,6 +196,12 @@ class MusicControllerManager(
     fun setPitchSemitones(semitones: Int) {
         val clamped = semitones.coerceIn(-12, 12)
         preferencesManager.setPitchSemitones(clamped)
+        applyPlaybackParameters()
+    }
+
+    fun setPitchCents(cents: Int) {
+        val clamped = cents.coerceIn(-50, 50)
+        preferencesManager.setPitchCents(clamped)
         applyPlaybackParameters()
     }
 

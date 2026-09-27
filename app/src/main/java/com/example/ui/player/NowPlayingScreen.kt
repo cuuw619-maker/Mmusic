@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,8 +105,10 @@ fun NowPlayingScreen(
     onOpenSleepTimer: () -> Unit,
     currentSpeed: Float = 1.0f,
     currentPitchSemitones: Int = 0,
+    currentPitchCents: Int = 0,
     onSpeedChanged: (Float) -> Unit = {},
     onPitchChanged: (Int) -> Unit = {},
+    onPitchCentsChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentSong = playbackState.currentSong ?: return
@@ -219,7 +222,15 @@ fun NowPlayingScreen(
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectVerticalDragGestures { _, dragAmount ->
+                            if (dragAmount > 20f) {
+                                performHapticFeedback(view, HapticType.LIGHT)
+                                onCollapse()
+                            }
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -241,17 +252,17 @@ fun NowPlayingScreen(
                         .pointerInput(currentSong.id) {
                             detectHorizontalDragGestures(
                                 onDragEnd = {
-                                    val threshold = 120f
+                                    val threshold = 75f
                                     if (artOffsetX.value < -threshold) {
-                                        // Swipe Left -> Next Track
-                                        isForwardTransition = true
-                                        performHapticFeedback(view, HapticType.LIGHT)
-                                        onSkipNext()
-                                    } else if (artOffsetX.value > threshold) {
-                                        // Swipe Right -> Previous Track
+                                        // Swipe Left -> Previous Track (user explicit preference)
                                         isForwardTransition = false
                                         performHapticFeedback(view, HapticType.LIGHT)
                                         onSkipPrevious()
+                                    } else if (artOffsetX.value > threshold) {
+                                        // Swipe Right -> Next Track
+                                        isForwardTransition = true
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onSkipNext()
                                     }
                                     scope.launch {
                                         artOffsetX.animateTo(0f, FluidMotionConstants.dragSpring())
@@ -270,9 +281,21 @@ fun NowPlayingScreen(
                         }
                         .pointerInput(currentSong.id) {
                             detectTapGestures(
-                                onDoubleTap = {
-                                    performHapticFeedback(view, HapticType.TOGGLE)
-                                    onToggleFavorite(currentSong.id)
+                                onDoubleTap = { offset ->
+                                    val boxWidth = size.width.toFloat()
+                                    if (offset.x < boxWidth * 0.35f) {
+                                        // Double tap left: Rewind 10s
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onRewind10()
+                                    } else if (offset.x > boxWidth * 0.65f) {
+                                        // Double tap right: Fast forward 10s
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onForward10()
+                                    } else {
+                                        // Double tap center: Toggle favorite
+                                        performHapticFeedback(view, HapticType.TOGGLE)
+                                        onToggleFavorite(currentSong.id)
+                                    }
                                 },
                                 onLongPress = {
                                     performHapticFeedback(view, HapticType.HEAVY)
@@ -306,11 +329,39 @@ fun NowPlayingScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Title, Artist and Favorite
+                // Title, Artist and Favorite with horizontal swipe gestures
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 32.dp),
+                        .padding(horizontal = 32.dp)
+                        .pointerInput(currentSong.id) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    val threshold = 70f
+                                    if (artOffsetX.value < -threshold) {
+                                        isForwardTransition = true
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onSkipNext()
+                                    } else if (artOffsetX.value > threshold) {
+                                        isForwardTransition = false
+                                        performHapticFeedback(view, HapticType.LIGHT)
+                                        onSkipPrevious()
+                                    }
+                                    scope.launch {
+                                        artOffsetX.animateTo(0f, FluidMotionConstants.dragSpring())
+                                    }
+                                },
+                                onDragCancel = {
+                                    scope.launch { artOffsetX.animateTo(0f) }
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    scope.launch {
+                                        artOffsetX.snapTo(calculateRubberBandOffset(artOffsetX.value + dragAmount, 0.25f))
+                                    }
+                                }
+                            )
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -523,8 +574,10 @@ fun NowPlayingScreen(
         SpeedPitchBottomSheet(
             currentSpeed = currentSpeed,
             currentPitchSemitones = currentPitchSemitones,
+            currentPitchCents = currentPitchCents,
             onSpeedChanged = onSpeedChanged,
             onPitchChanged = onPitchChanged,
+            onPitchCentsChanged = onPitchCentsChanged,
             onDismiss = { showSpeedPitchSheet = false }
         )
     }

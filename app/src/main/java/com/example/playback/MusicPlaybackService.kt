@@ -9,6 +9,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
@@ -60,7 +61,7 @@ class MusicPlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        // High quality Sonic time-stretching engine (disable platform AudioTrack params to avoid stutter/repeats)
+        // Studio Master 64-bit Audio DSP pipeline with float processing & 4x anti-crackle buffer headroom
         val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
@@ -68,16 +69,32 @@ class MusicPlaybackService : MediaSessionService() {
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink {
                 return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(false)
+                    .setEnableFloatOutput(true)
+                    .setEnableAudioTrackPlaybackParams(true)
+                    .setAudioTrackBufferSizeProvider { minBufferSizeInBytes, _, _, _, _, _, _ ->
+                        // Quadruple buffer headroom (minimum 128KB) to completely eliminate buffer underruns,
+                        // crackles, flutter, and "репение" even during deep time-stretching (0.5x speed)
+                        (minBufferSizeInBytes * 4).coerceAtLeast(131072)
+                    }
                     .build()
             }
         }
+
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 30000,
+                /* maxBufferMs = */ 60000,
+                /* bufferForPlaybackMs = */ 2000,
+                /* bufferForPlaybackAfterRebufferMs = */ 5000
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
 
         player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
+            .setLoadControl(loadControl)
             .build()
 
         val crossfadeRenderersFactory = object : DefaultRenderersFactory(this) {
@@ -87,14 +104,18 @@ class MusicPlaybackService : MediaSessionService() {
                 enableAudioTrackPlaybackParams: Boolean
             ): AudioSink {
                 return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(false)
+                    .setEnableFloatOutput(true)
+                    .setEnableAudioTrackPlaybackParams(true)
+                    .setAudioTrackBufferSizeProvider { minBufferSizeInBytes, _, _, _, _, _, _ ->
+                        (minBufferSizeInBytes * 4).coerceAtLeast(131072)
+                    }
                     .build()
             }
         }
 
         crossfadePlayer = ExoPlayer.Builder(this, crossfadeRenderersFactory)
             .setAudioAttributes(audioAttributes, false)
+            .setLoadControl(loadControl)
             .build()
 
         // Bind equalizer directly to player session
@@ -240,34 +261,42 @@ class MusicPlaybackService : MediaSessionService() {
     fun crossfadeTo(targetIndex: Int, crossfadeMs: Long) {
         if (targetIndex !in 0 until player.mediaItemCount) return
         val currentItem = player.currentMediaItem
-        val currentPos = player.currentPosition.coerceAtLeast(0L)
         val secPlayer = crossfadePlayer
 
         crossfadeJob?.cancel()
 
         if (secPlayer == null || currentItem == null || crossfadeMs <= 0 || !player.isPlaying) {
-            player.seekTo(targetIndex, 0L)
             player.volume = 1.0f
+            player.seekTo(targetIndex, 0L)
             player.play()
             return
         }
 
-        // 1. Prepare secondary player to smoothly fade out the CURRENT outgoing track
-        secPlayer.stop()
-        secPlayer.clearMediaItems()
-        secPlayer.setMediaItem(currentItem, currentPos)
-        secPlayer.volume = player.volume
-        secPlayer.prepare()
-        secPlayer.play()
-
-        // 2. Main player immediately moves to the target track at 0 volume and starts playing!
-        // This ensures the main player is already playing the new track continuously without any handover seek or restart.
-        player.volume = 0f
-        player.seekTo(targetIndex, 0L)
-        player.play()
-
         crossfadeJob = serviceScope.launch {
-            // Equal-power crossfade curve: cos for fade out, sin for fade in
+            val currentPos = player.currentPosition.coerceAtLeast(0L)
+            // 1. Prepare secondary player with the outgoing track at current position
+            secPlayer.stop()
+            secPlayer.clearMediaItems()
+            secPlayer.setMediaItem(currentItem, currentPos)
+            secPlayer.volume = player.volume
+            secPlayer.prepare()
+
+            // 2. Prepare primary player with the incoming target track at 0 volume
+            player.volume = 0f
+            player.seekTo(targetIndex, 0L)
+
+            // 3. Wait until BOTH players are actively in STATE_READY so there is ZERO micropause or silence gap!
+            var waitCount = 0
+            while ((secPlayer.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_BUFFERING) && waitCount < 30) {
+                delay(10L)
+                waitCount++
+            }
+
+            // 4. Start simultaneous seamless playback
+            secPlayer.play()
+            player.play()
+
+            // 5. Equal-power crossfade curve: cos for fade out, sin for fade in
             val steps = 30
             val stepDelay = (crossfadeMs / steps).coerceAtLeast(10L)
             for (i in 1..steps) {

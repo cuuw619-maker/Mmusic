@@ -99,6 +99,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val amoledDark = preferencesManager.amoledDark
     val playbackSpeed = preferencesManager.playbackSpeed
     val pitchSemitones = preferencesManager.pitchSemitones
+    val pitchCents = preferencesManager.pitchCents
+    val audioEngineMode = preferencesManager.audioEngineMode
+    val antiCrackleBuffer = preferencesManager.antiCrackleBuffer
+    val playerSwipeDirection = preferencesManager.playerSwipeDirection
+    val doubleTapSeekSeconds = preferencesManager.doubleTapSeekSeconds
+    val volumeGestureEnabled = preferencesManager.volumeGestureEnabled
+    val filterShortAudio = preferencesManager.filterShortAudio
     val preservePitch = preferencesManager.preservePitch
     val crossfadeEnabled = preferencesManager.crossfadeEnabled
     val crossfadeDuration = preferencesManager.crossfadeDuration
@@ -352,6 +359,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setPlaybackSpeed(speed: Float) = controllerManager.setPlaybackSpeed(speed)
     fun setPitchSemitones(semitones: Int) = controllerManager.setPitchSemitones(semitones)
+    fun setPitchCents(cents: Int) = controllerManager.setPitchCents(cents)
+    fun setAudioEngineMode(mode: String) = preferencesManager.setAudioEngineMode(mode)
+    fun setAntiCrackleBuffer(enabled: Boolean) = preferencesManager.setAntiCrackleBuffer(enabled)
+    fun setPlayerSwipeDirection(dir: String) = preferencesManager.setPlayerSwipeDirection(dir)
+    fun setDoubleTapSeekSeconds(seconds: Int) = preferencesManager.setDoubleTapSeekSeconds(seconds)
+    fun setVolumeGestureEnabled(enabled: Boolean) = preferencesManager.setVolumeGestureEnabled(enabled)
+    fun setFilterShortAudio(enabled: Boolean) = preferencesManager.setFilterShortAudio(enabled)
     fun setPreservePitch(preserve: Boolean) = controllerManager.setPreservePitch(preserve)
     fun setCrossfadeEnabled(enabled: Boolean) = preferencesManager.setCrossfadeEnabled(enabled)
     fun setCrossfadeDuration(seconds: Float) = preferencesManager.setCrossfadeDuration(seconds)
